@@ -15,6 +15,10 @@
 
 This public repository intentionally excludes generated binaries, flash dumps, local build output, and downloaded tool archives. Those files are hardware-specific and can be recreated or kept locally when needed.
 
+## Display Preview
+
+![STM32H7 touch-screen board showing the persistent Trio framebuffer image](docs/assets/stm32h7-trio-display.jpg)
+
 ## Contents
 
 | Path | Purpose |
