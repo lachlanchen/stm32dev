@@ -1,0 +1,15 @@
+build/
+**/build/
+backups/
+*.elf
+*.bin
+*.hex
+*.map
+*.o
+*.d
+*.log
+*.tmp
+.DS_Store
+tools/downloads/
+tools/xpack/
+tools/xpack-*/

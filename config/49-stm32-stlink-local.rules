@@ -1,0 +1,19 @@
+# Local STM32/ST-Link access for user development.
+#
+# The ST-LINK/V2.1 exposes three functions:
+# - vendor debug interface
+# - a small fake MBED mass-storage disk
+# - a CDC ACM serial port
+#
+# We want debug and serial access without sudo, but we do not want the
+# fake mass-storage disk to trigger desktop mount/auth prompts.
+
+ACTION=="add|change", SUBSYSTEM=="usb", ATTR{idVendor}=="0483", MODE="0666", GROUP="plugdev", TAG+="uaccess", ENV{ID_MM_DEVICE_IGNORE}="1"
+ACTION=="add|change", SUBSYSTEM=="usb_device", ATTR{idVendor}=="0483", MODE="0666", GROUP="plugdev", TAG+="uaccess", ENV{ID_MM_DEVICE_IGNORE}="1"
+
+ACTION=="add|change", SUBSYSTEM=="tty", KERNEL=="ttyACM*", ATTRS{idVendor}=="0483", MODE="0666", GROUP="dialout", TAG+="uaccess", ENV{ID_MM_DEVICE_IGNORE}="1"
+ACTION=="add|change", SUBSYSTEM=="tty", KERNEL=="ttyUSB*", MODE="0666", GROUP="dialout", TAG+="uaccess"
+
+# Ignore the ST-Link fake USB disk in udisks so the desktop stops asking
+# for authentication when the cable is plugged in.
+ACTION=="add|change", SUBSYSTEM=="block", KERNEL=="sd*", ATTRS{idVendor}=="0483", ATTRS{idProduct}=="374b", ENV{UDISKS_IGNORE}="1", ENV{UDISKS_AUTO}="0"

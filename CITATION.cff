@@ -1,0 +1,24 @@
+cff-version: 1.2.0
+message: "If you use stm32dev, please cite this repository."
+type: software
+title: "stm32dev: STM32H7 Touch-Screen Board Development Workspace"
+version: 0.1.0
+date-released: 2026-06-25
+abstract: "A practical STM32H7 touch-screen board workspace with ST-Link/OpenOCD scripts, wiring notes, firmware backup helpers, and cache-aware framebuffer patch source."
+authors:
+  - family-names: Chen
+    given-names: Lachlan
+    alias: lachlanchen
+repository-code: "https://github.com/lachlanchen/stm32dev"
+url: "https://lazying.art"
+keywords:
+  - stm32
+  - stm32h7
+  - embedded systems
+  - openocd
+  - stlink
+  - framebuffer
+  - ltdc
+  - touchscreen
+  - firmware
+  - lazyingart
