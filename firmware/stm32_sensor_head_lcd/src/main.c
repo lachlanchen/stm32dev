@@ -32,6 +32,8 @@
 #define AS_FIXED_VISIBLE_MAX AS_FSR_FAST
 #define AS_FIXED_AUX_MAX     AS_FSR_FAST
 #define TSL_FIXED_RAW_MAX    65535u
+#define CAPTURE_LOG_MAGIC    0x53504C47u
+#define CAPTURE_LOG_CAPACITY 2048u
 
 #define UI_BG                0x0841u
 #define UI_PANEL             0x18E3u
@@ -84,6 +86,36 @@ static uint8_t tsl_gain_code = 0x10;
 static uint8_t as_gain_code = 5;
 static uint32_t as_sample_count = 0;
 static uint32_t tsl_sample_count = 0;
+
+typedef struct {
+    uint32_t t_ms;
+    uint32_t seq;
+    uint32_t as_samples;
+    uint32_t tsl_samples;
+    uint16_t tsl_ch0;
+    uint16_t tsl_ch1;
+    uint16_t tsl_visible;
+    uint16_t tsl_gain;
+    uint16_t ok_flags;
+    uint16_t status2;
+    uint16_t as_gain;
+    uint16_t reserved;
+    uint16_t ch[18];
+} CaptureRecord;
+
+volatile uint32_t capture_log_magic = CAPTURE_LOG_MAGIC;
+volatile uint32_t capture_log_capacity = CAPTURE_LOG_CAPACITY;
+volatile uint32_t capture_log_record_size = sizeof(CaptureRecord);
+volatile uint32_t capture_log_write = 0;
+volatile CaptureRecord capture_log[CAPTURE_LOG_CAPACITY];
+
+static void capture_log_init_metadata(void)
+{
+    capture_log_magic = CAPTURE_LOG_MAGIC;
+    capture_log_capacity = CAPTURE_LOG_CAPACITY;
+    capture_log_record_size = sizeof(CaptureRecord);
+    capture_log_write = 0;
+}
 
 void SysTick_Handler(void)
 {
@@ -767,6 +799,26 @@ static void draw_live(uint32_t t_ms, bool as_ok, bool tsl_ok)
     if (intensity_x >= right_w) intensity_x = 0;
 }
 
+static void capture_log_sample(uint32_t t_ms, bool as_ok, bool tsl_ok)
+{
+    uint32_t idx = capture_log_write % CAPTURE_LOG_CAPACITY;
+    CaptureRecord *r = (CaptureRecord *)&capture_log[idx];
+    r->t_ms = t_ms;
+    r->seq = seq;
+    r->as_samples = as_sample_count;
+    r->tsl_samples = tsl_sample_count;
+    r->tsl_ch0 = last_tsl0;
+    r->tsl_ch1 = last_tsl1;
+    r->tsl_visible = (last_tsl0 > last_tsl1) ? (uint16_t)(last_tsl0 - last_tsl1) : 0u;
+    r->tsl_gain = tsl_gain_code;
+    r->ok_flags = (uint16_t)((as_ok ? 1u : 0u) | (tsl_ok ? 2u : 0u) | (scale_fixed_mode ? 4u : 0u));
+    r->status2 = last_status2;
+    r->as_gain = as_gain_code;
+    r->reserved = 0;
+    for (uint8_t i = 0; i < 18u; i++) r->ch[i] = last_as[i];
+    capture_log_write++;
+}
+
 static void print_csv_header(void)
 {
     printf("# STM32H743 sensor head\r\n");
@@ -829,6 +881,7 @@ int main(void)
     Stm32_Clock_Init(160, 5, 2, 4); /* 400 MHz */
     delay_init(400);
     uart_init(115200);
+    capture_log_init_metadata();
     SDRAM_Init();
     LCD_Init();
     LCD_Display_Dir(1);
@@ -873,6 +926,7 @@ int main(void)
 
         if ((now - last_draw) >= DRAW_PERIOD_MS) {
             seq++;
+            capture_log_sample(now, as_ok_live, tsl_ok_live);
             print_csv(now, as_ok_live, tsl_ok_live);
             draw_live(now, as_ok_live, tsl_ok_live);
             last_draw = now;
