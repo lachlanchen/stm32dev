@@ -746,6 +746,7 @@ static void draw_live(uint32_t t_ms, bool as_ok, bool tsl_ok)
         }
     }
     draw_spectrum_axes(left_x, plot_y, left_w, plot_h);
+    draw_tiny_text((uint16_t)(left_x + 12u), (uint16_t)(plot_y + 8u), "AS7343", as_ok ? UI_CYAN : UI_RED, 2);
     draw_aux_spectrum_bars(left_x, plot_y, left_w, as_ok);
     for (uint8_t i = 1; i < n_main; i++) {
         uint16_t x0 = (uint16_t)(left_x + 16 + ((uint32_t)(i - 1) * (left_w - 32)) / (n_main - 1u));
@@ -765,6 +766,7 @@ static void draw_live(uint32_t t_ms, bool as_ok, bool tsl_ok)
     if (erase_x1 > (uint16_t)(right_x + right_w)) erase_x1 = (uint16_t)(right_x + right_w);
     LCD_Fill(x, (uint16_t)(plot_y + 1), erase_x1, (uint16_t)(plot_y + plot_h - 1), BLACK);
     draw_intensity_axes(right_x, plot_y, right_w, plot_h, scale_fixed_mode);
+    draw_tiny_text((uint16_t)(right_x + 12u), (uint16_t)(plot_y + 8u), "TSL2591", tsl_ok ? UI_GREEN : UI_RED, 2);
 
     uint16_t raw_visible = (last_tsl0 > last_tsl1) ? (uint16_t)(last_tsl0 - last_tsl1) : 0u;
     uint16_t tsl_y = scale_fixed_mode ?
