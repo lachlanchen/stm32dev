@@ -46,12 +46,16 @@ static const uint8_t spec_ch[] = {12, 6, 0, 7, 8, 15, 1, 2, 9, 13, 14, 3};
 
 static uint16_t intensity_x = 0;
 static uint16_t prev_tsl_y = 0;
+static uint16_t prev_full_y = 0;
 static uint16_t prev_diag_y = 0;
 static bool intensity_started = false;
 static uint32_t as_trace_max = 100;
 static uint32_t tsl_trace_max = 100;
+static uint32_t full_trace_max = 100;
 static uint16_t prev_spec_y[sizeof(spec_ch)];
 static bool spectrum_started = false;
+static uint8_t tsl_gain_index = 1;
+static uint8_t tsl_gain_code = 0x10;
 
 void SysTick_Handler(void)
 {
@@ -272,14 +276,36 @@ static bool tsl_read16(uint8_t reg, uint16_t *value)
 static bool tsl2591_configure(void)
 {
     bool ok = tsl_write8(0x00u, 0x03u); /* PON + AEN */
-    ok = tsl_write8(0x01u, 0x00u) && ok; /* 100 ms integration, low gain */
+    ok = tsl_write8(0x01u, tsl_gain_code) && ok; /* 100 ms integration, auto gain */
     HAL_Delay(120);
     return ok;
 }
 
+static void tsl2591_auto_gain(uint16_t ch0, uint16_t ch1)
+{
+    static const uint8_t gain_codes[] = {0x00u, 0x10u, 0x20u, 0x30u};
+    uint16_t peak = (ch0 > ch1) ? ch0 : ch1;
+    uint8_t next = tsl_gain_index;
+
+    if (peak > 60000u && next > 0) {
+        next--;
+    } else if (peak < 512u && next < 3) {
+        next++;
+    }
+
+    if (next != tsl_gain_index) {
+        tsl_gain_index = next;
+        tsl_gain_code = gain_codes[next];
+        tsl_write8(0x01u, tsl_gain_code);
+        HAL_Delay(120);
+    }
+}
+
 static bool tsl2591_read(uint16_t *ch0, uint16_t *ch1)
 {
-    return tsl_read16(0x14u, ch0) && tsl_read16(0x16u, ch1);
+    bool ok = tsl_read16(0x14u, ch0) && tsl_read16(0x16u, ch1);
+    if (ok) tsl2591_auto_gain(*ch0, *ch1);
+    return ok;
 }
 
 static void scan_i2c(char *buf, size_t n)
@@ -405,6 +431,8 @@ static void draw_live(uint32_t t_ms, bool as_ok, bool tsl_ok)
     else if (as_trace_max > 100) as_trace_max -= (as_trace_max / 512u) + 1u;
     if (visible > tsl_trace_max) tsl_trace_max = visible;
     else if (tsl_trace_max > 100) tsl_trace_max -= (tsl_trace_max / 512u) + 1u;
+    if (last_tsl0 > full_trace_max) full_trace_max = last_tsl0;
+    else if (full_trace_max > 100) full_trace_max -= (full_trace_max / 512u) + 1u;
 
     uint16_t spec_y[sizeof(spec_ch)];
     uint32_t spec_max = 1;
@@ -438,15 +466,19 @@ static void draw_live(uint32_t t_ms, bool as_ok, bool tsl_ok)
     LCD_Fill(x, (uint16_t)(plot_y + 1), erase_x1, (uint16_t)(plot_y + plot_h - 1), BLACK);
 
     uint16_t tsl_y = trace_y(visible, tsl_trace_max, plot_y, plot_h);
+    uint16_t full_y = trace_y(last_tsl0, full_trace_max, plot_y, plot_h);
     uint16_t diag_y = trace_y(diag, 100u, plot_y, plot_h);
 
     if (!intensity_started || intensity_x == 0) {
         prev_tsl_y = tsl_y;
+        prev_full_y = full_y;
         prev_diag_y = diag_y;
         intensity_started = true;
     }
 
     uint16_t prev_x = (intensity_x >= 3) ? (uint16_t)(x - 3) : x;
+    POINT_COLOR = tsl_ok ? UI_ORANGE : UI_RED;
+    LCD_DrawLine(prev_x, prev_full_y, x, full_y);
     POINT_COLOR = tsl_ok ? UI_GREEN : UI_RED;
     LCD_DrawLine(prev_x, prev_tsl_y, x, tsl_y);
     if (!as_ok && !tsl_ok) {
@@ -455,6 +487,7 @@ static void draw_live(uint32_t t_ms, bool as_ok, bool tsl_ok)
     }
 
     prev_tsl_y = tsl_y;
+    prev_full_y = full_y;
     prev_diag_y = diag_y;
     intensity_x = (uint16_t)(intensity_x + 3);
     if (intensity_x >= right_w) intensity_x = 0;

@@ -159,3 +159,34 @@ GPIOB IDR   = 0x000003f0
 ```
 
 `GPIOB IDR = 0x000003f0` means PB8 and PB9 are electrically high/released, so the bus is not stuck low. The remaining failure is no ACK from either sensor. If the user confirms the jumpers are on PB8/PB9, the next likely causes are sensor VCC/GND, wrong physical header row, sensor board not powered, missing common ground, or address/module mismatch.
+
+## 2026-07-01 Refined TSL2591 Acquisition
+
+The STM32 firmware now keeps TSL2591 at the fastest meaningful integration time:
+
+```text
+integration time: 100 ms
+maximum new optical samples: about 10 Hz
+```
+
+Reading faster than this repeats the same ADC result, so the firmware prioritizes clean live visualization instead of fake oversampling.
+
+The TSL2591 path now uses simple auto-gain:
+
+```text
+peak > 60000 counts -> lower gain
+peak < 512 counts   -> raise gain
+```
+
+The right-side plot now has two intensity traces:
+
+```text
+orange = full-spectrum TSL channel
+green  = visible estimate = full - IR
+```
+
+The Baidu Netdisk STM32 package remains read-only reference material. Working firmware lives in:
+
+```text
+C:\Users\Administrator\Projects\stm32dev\firmware\stm32_sensor_head_lcd
+```
