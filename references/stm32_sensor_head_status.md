@@ -14,17 +14,24 @@ Separate lamp control from measurement:
 
 ## Current hardware detection
 
-Windows currently sees only:
+Windows now sees the STM32/ST-Link path:
 
-- `COM1` built-in communications port
+- `COM7` USB Serial Device from `VID_0483&PID_374B&MI_02`
+- `ST-Link Debug` from `VID_0483&PID_374B&MI_00`
+- `MBED microcontroller USB Device`
 
-OpenOCD was tested with ST-Link config and failed:
+OpenOCD can attach over SWD:
 
 ```text
-Error: open failed
+STLINK V2J45M31
+Target voltage: about 3.24 V
+Cortex-M7 detected
+PC: 0x08001340
 ```
 
-That means the PC cannot currently access the STM32 through ST-Link/SWD, USB CDC, CMSIS-DAP, or any visible serial interface. The sensors may be wired correctly, but I cannot flash firmware or read sensor data until the programmer/serial path appears in Windows.
+The MCU is reachable and flash is readable. However, `COM7` currently produces no bytes at `115200`, `57600`, or `9600` baud, so the firmware currently on the board is not streaming AS7343/TSL2591 sensor frames yet.
+
+Next blocking step: flash a measurement firmware that initializes I2C1 on `PB8/PB9`, reads AS7343 and TSL2591, and streams CSV frames over the ST-Link virtual COM port.
 
 ## First wiring
 
@@ -75,4 +82,3 @@ The display must never run inside the high-rate sensor read loop.
 ## Speed limit
 
 TSL2591 minimum normal integration is 100 ms, so it cannot verify true sub-100 ms modulation. AS7343 can be configured faster, but full multi-channel spectral frames are still limited by integration/readout. For sub-100 ms intensity verification, use a photodiode + transimpedance amplifier + STM32 ADC/DMA.
-
