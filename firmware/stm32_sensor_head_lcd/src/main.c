@@ -46,10 +46,17 @@ static bool ok_as7343 = false;
 static uint16_t last_as[18];
 static uint16_t last_tsl0 = 0;
 static uint16_t last_tsl1 = 0;
+static uint32_t last_tsl0_norm = 0;
+static uint32_t last_tsl_visible_norm = 0;
 static uint8_t last_status2 = 0;
 static uint32_t seq = 0;
 
-static const uint8_t spec_ch[] = {12, 6, 0, 7, 8, 15, 1, 2, 9, 13, 14, 3};
+#define SPEC_CLEAR_AVG        0xFEu
+#define SPEC_FD_AVG           0xFDu
+
+static const uint8_t spec_ch[] = {
+    12, 6, 0, 7, 8, 15, 1, 2, 9, 13, 14, 3, SPEC_CLEAR_AVG, SPEC_FD_AVG
+};
 
 static uint16_t intensity_x = 0;
 static uint16_t prev_tsl_y = 0;
@@ -310,6 +317,14 @@ static bool tsl2591_configure(void)
     return ok;
 }
 
+static uint32_t tsl_gain_divisor(void)
+{
+    static const uint32_t gain_div[] = {1u, 25u, 428u, 9876u};
+    uint8_t idx = tsl_gain_index;
+    if (idx > 3u) idx = 3u;
+    return gain_div[idx];
+}
+
 static void tsl2591_auto_gain(uint16_t ch0, uint16_t ch1)
 {
     static const uint8_t gain_codes[] = {0x00u, 0x10u, 0x20u, 0x30u};
@@ -333,8 +348,26 @@ static void tsl2591_auto_gain(uint16_t ch0, uint16_t ch1)
 static bool tsl2591_read(uint16_t *ch0, uint16_t *ch1)
 {
     bool ok = tsl_read16(0x14u, ch0) && tsl_read16(0x16u, ch1);
-    if (ok) tsl2591_auto_gain(*ch0, *ch1);
+    if (ok) {
+        uint16_t visible = (*ch0 > *ch1) ? (uint16_t)(*ch0 - *ch1) : 0u;
+        uint32_t div = tsl_gain_divisor();
+        last_tsl0_norm = ((uint32_t)(*ch0) * 4096u) / div;
+        last_tsl_visible_norm = ((uint32_t)visible * 4096u) / div;
+        tsl2591_auto_gain(*ch0, *ch1);
+    }
     return ok;
+}
+
+static uint16_t spectrum_value(uint8_t ch)
+{
+    if (ch == SPEC_CLEAR_AVG) {
+        return (uint16_t)(((uint32_t)last_as[4] + last_as[10] + last_as[16]) / 3u);
+    }
+    if (ch == SPEC_FD_AVG) {
+        return (uint16_t)(((uint32_t)last_as[5] + last_as[11] + last_as[17]) / 3u);
+    }
+    if (ch < 18u) return last_as[ch];
+    return 0u;
 }
 
 static void scan_i2c(char *buf, size_t n)
@@ -477,8 +510,9 @@ static void draw_live(uint32_t t_ms, bool as_ok, bool tsl_ok)
     draw_status_boxes(as_ok, tsl_ok);
 
     uint32_t as_sum = 0;
-    for (uint8_t i = 0; i < n; i++) as_sum += last_as[spec_ch[i]];
-    uint16_t visible = (last_tsl0 > last_tsl1) ? (uint16_t)(last_tsl0 - last_tsl1) : 0;
+    for (uint8_t i = 0; i < n; i++) as_sum += spectrum_value(spec_ch[i]);
+    uint32_t visible = last_tsl_visible_norm;
+    uint32_t full_norm = last_tsl0_norm;
     uint32_t diag = (!as_ok && !tsl_ok) ? ((seq & 0x20u) ? 18u : 65u) : 0u;
 
     if (as_sum > as_trace_max) as_trace_max = as_sum;
@@ -487,14 +521,14 @@ static void draw_live(uint32_t t_ms, bool as_ok, bool tsl_ok)
     uint16_t spec_y[sizeof(spec_ch)];
     uint32_t spec_max = 1;
     for (uint8_t i = 0; i < n; i++) {
-        uint16_t v = last_as[spec_ch[i]];
+        uint16_t v = spectrum_value(spec_ch[i]);
         if (v > spec_max) spec_max = v;
     }
     if (spec_max < 100) spec_max = 100;
 
     for (uint8_t i = 0; i < n; i++) {
         uint16_t x0 = (uint16_t)(left_x + 16 + ((uint32_t)i * (left_w - 32)) / (n - 1));
-        spec_y[i] = trace_y(last_as[spec_ch[i]], spec_max, plot_y, plot_h);
+        spec_y[i] = trace_y(spectrum_value(spec_ch[i]), spec_max, plot_y, plot_h);
         if (spectrum_started && i > 0) {
             uint16_t px0 = (uint16_t)(left_x + 16 + ((uint32_t)(i - 1) * (left_w - 32)) / (n - 1));
             POINT_COLOR = BLACK;
@@ -516,7 +550,7 @@ static void draw_live(uint32_t t_ms, bool as_ok, bool tsl_ok)
     LCD_Fill(x, (uint16_t)(plot_y + 1), erase_x1, (uint16_t)(plot_y + plot_h - 1), BLACK);
 
     uint16_t tsl_y = centered_trace_y(visible, &tsl_visible_baseline, &tsl_visible_span, plot_y, plot_h);
-    uint16_t full_y = centered_trace_y(last_tsl0, &tsl_full_baseline, &tsl_full_span, plot_y, plot_h);
+    uint16_t full_y = centered_trace_y(full_norm, &tsl_full_baseline, &tsl_full_span, plot_y, plot_h);
     uint16_t diag_y = trace_y(diag, 100u, plot_y, plot_h);
 
     if (!intensity_started || intensity_x == 0) {
@@ -547,15 +581,29 @@ static void print_csv_header(void)
 {
     printf("# STM32H743 sensor head\r\n");
     printf("# AS7343 addr=0x39 TSL2591 addr=0x29 I2C1 PB8/PB9\r\n");
-    printf("t_ms,seq,ok_tsl,tsl_ch0,tsl_ch1,tsl_visible,ok_as7343,status2,ch0,ch1,ch2,ch3,ch4,ch5,ch6,ch7,ch8,ch9,ch10,ch11,ch12,ch13,ch14,ch15,ch16,ch17,sum_visible\r\n");
+    printf("t_ms,seq,ok_tsl,tsl_ch0,tsl_ch1,tsl_visible,tsl_gain,tsl_full_norm,tsl_visible_norm,tsl_samples,ok_as7343,status2,as_gain,as_samples,ch0,ch1,ch2,ch3,ch4,ch5,ch6,ch7,ch8,ch9,ch10,ch11,ch12,ch13,ch14,ch15,ch16,ch17,sum_display\r\n");
 }
 
 static void print_csv(uint32_t t_ms, bool as_ok, bool tsl_ok)
 {
     uint16_t visible = (last_tsl0 > last_tsl1) ? (uint16_t)(last_tsl0 - last_tsl1) : 0;
     uint32_t sum = 0;
-    for (uint8_t i = 0; i < sizeof(spec_ch); i++) sum += last_as[spec_ch[i]];
-    printf("%lu,%lu,%u,%u,%u,%u,%u,%u", (unsigned long)t_ms, (unsigned long)seq, tsl_ok ? 1 : 0, last_tsl0, last_tsl1, visible, as_ok ? 1 : 0, last_status2);
+    for (uint8_t i = 0; i < sizeof(spec_ch); i++) sum += spectrum_value(spec_ch[i]);
+    printf("%lu,%lu,%u,%u,%u,%u,%u,%lu,%lu,%lu,%u,%u,%u,%lu",
+           (unsigned long)t_ms,
+           (unsigned long)seq,
+           tsl_ok ? 1 : 0,
+           last_tsl0,
+           last_tsl1,
+           visible,
+           tsl_gain_code,
+           (unsigned long)last_tsl0_norm,
+           (unsigned long)last_tsl_visible_norm,
+           (unsigned long)tsl_sample_count,
+           as_ok ? 1 : 0,
+           last_status2,
+           as_gain_code,
+           (unsigned long)as_sample_count);
     for (uint8_t i = 0; i < 18; i++) printf(",%u", last_as[i]);
     printf(",%lu\r\n", (unsigned long)sum);
 }

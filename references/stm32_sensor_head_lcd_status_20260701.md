@@ -262,3 +262,94 @@ target voltage = about 3.21 V
 ```
 
 The left spectrum plot should now update from real AS7343 data, and the right intensity plot should update from real TSL2591 data.
+
+## 2026-07-01 Full AS7343 14-Point Spectrum and Robust TSL Display
+
+The AS7343 product is a 14-channel spectral sensor: visible/NIR spectral channels plus clear and flicker-related data. In the firmware's 18-register auto-SMUX mode, the useful order is:
+
+```text
+0  FZ 450 nm
+1  FY 555 nm
+2  FXL 600 nm
+3  NIR 855 nm
+4  VIS/Clear cycle 1
+5  FD cycle 1
+6  F2 425 nm
+7  F3 475 nm
+8  F4 515 nm
+9  F6 640 nm
+10 VIS/Clear cycle 2
+11 FD cycle 2
+12 F1 405 nm
+13 F7 690 nm
+14 F8 745 nm
+15 F5 550 nm
+16 VIS/Clear cycle 3
+17 FD cycle 3
+```
+
+The left panel now draws 14 points:
+
+```text
+F1, F2, FZ, F3, F4, F5, FY, FXL, F6, F7, F8, NIR, ClearAvg, FDAvg
+```
+
+`ClearAvg` is the average of VIS/Clear cycles 1, 2, and 3. `FDAvg` is the average of FD cycles 1, 2, and 3.
+
+The top status boxes mean:
+
+```text
+box 1 green/red  = AS7343 detected/readable
+box 2 green/red  = TSL2591 detected/readable
+cyan + 3 grey    = selected I2C pin mode; cyan mode 0 means PB8=SCL, PB9=SDA
+last green/red   = SDA idle level, green means high/released
+```
+
+The right intensity panel has two lines:
+
+```text
+orange = TSL2591 full channel, visible + infrared
+green  = TSL2591 visible estimate, full - infrared
+```
+
+The TSL display now uses gain-normalized values, so auto-gain changes should not create artificial jumps in the plotted curves. Raw `full` and `IR` ADC values are still preserved and printed in CSV.
+
+The CSV now includes:
+
+```text
+raw TSL full/IR
+raw visible estimate
+TSL gain code
+gain-normalized full/visible
+TSL sample counter
+AS7343 gain code
+AS7343 sample counter
+all 18 raw AS7343 registers
+14-point display sum
+```
+
+Live validation after flashing this version:
+
+```text
+ok_as7343 = 1
+ok_tsl    = 1
+AS7343 raw registers = nonzero
+TSL raw/normalized values = nonzero
+AS7343 sample counter = increasing
+TSL sample counter = increasing
+target voltage = about 3.21 V
+```
+
+Reference notes used for this update:
+
+```text
+ams OSRAM AS7343 datasheet:
+- AS7343 is a 14-channel multispectral sensor.
+- Integration time = (ATIME + 1) * (ASTEP + 1) * 2.78 us.
+- Auto-SMUX 18-channel readout stores FZ/FY/FXL/NIR/VIS/FD and F1-F8 across three cycles.
+
+ams OSRAM TSL2591 datasheet:
+- Channel 0 is broadband/full, visible + IR.
+- Channel 1 is IR.
+- Two integrating ADCs produce the digital irradiance channels.
+```
