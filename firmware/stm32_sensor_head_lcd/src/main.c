@@ -704,6 +704,10 @@ static void draw_live(uint32_t t_ms, bool as_ok, bool tsl_ok)
     for (uint8_t i = 0; i < n_main; i++) {
         uint16_t x0 = (uint16_t)(left_x + 16 + ((uint32_t)i * (left_w - 32)) / (n_main - 1u));
         spec_y[i] = trace_y(spectrum_value(spec_ch[i]), spec_max, plot_y, plot_h);
+        if (spectrum_started) {
+            uint16_t px = (uint16_t)(left_x + 16 + ((uint32_t)i * (left_w - 32)) / (n_main - 1u));
+            LCD_Fill((uint16_t)(px - 3u), (uint16_t)(prev_spec_y[i] - 3u), (uint16_t)(px + 3u), (uint16_t)(prev_spec_y[i] + 3u), BLACK);
+        }
         if (spectrum_started && i > 0) {
             uint16_t px0 = (uint16_t)(left_x + 16 + ((uint32_t)(i - 1) * (left_w - 32)) / (n_main - 1u));
             POINT_COLOR = BLACK;
