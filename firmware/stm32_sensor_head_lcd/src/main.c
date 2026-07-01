@@ -276,22 +276,8 @@ static bool as7343_configure(void)
 
 static void as7343_auto_gain(const uint16_t *channels)
 {
-    uint16_t peak = 0;
-    for (uint8_t i = 0; i < 18; i++) {
-        if (channels[i] > peak) peak = channels[i];
-    }
-
-    uint8_t next = as_gain_code;
-    if ((uint32_t)peak > (AS_FSR_FAST * 85u) / 100u && next > 0u) {
-        next--;
-    } else if ((uint32_t)peak < (AS_FSR_FAST * 15u) / 100u && next < 10u) {
-        next++;
-    }
-
-    if (next != as_gain_code) {
-        as_gain_code = next;
-        i2c_write8(AS7343_ADDR, AS_REG_CFG1, as_gain_code);
-    }
+    (void)channels;
+    /* Fixed gain keeps spectral samples comparable across time. */
 }
 
 static bool as7343_read18(uint16_t *channels, uint8_t *status2)
@@ -336,22 +322,9 @@ static uint32_t tsl_gain_divisor(void)
 
 static void tsl2591_auto_gain(uint16_t ch0, uint16_t ch1)
 {
-    static const uint8_t gain_codes[] = {0x00u, 0x10u, 0x20u, 0x30u};
-    uint16_t peak = (ch0 > ch1) ? ch0 : ch1;
-    uint8_t next = tsl_gain_index;
-
-    if (peak > 60000u && next > 0) {
-        next--;
-    } else if (peak < 512u && next < 3) {
-        next++;
-    }
-
-    if (next != tsl_gain_index) {
-        tsl_gain_index = next;
-        tsl_gain_code = gain_codes[next];
-        tsl_write8(0x01u, tsl_gain_code);
-        HAL_Delay(120);
-    }
+    (void)ch0;
+    (void)ch1;
+    /* Fixed gain keeps intensity samples comparable across time. */
 }
 
 static bool tsl2591_read(uint16_t *ch0, uint16_t *ch1)
@@ -799,6 +772,7 @@ static void print_csv_header(void)
     printf("# STM32H743 sensor head\r\n");
     printf("# AS7343 addr=0x39 TSL2591 addr=0x29 I2C1 PB8/PB9\r\n");
     printf("# serial command: s toggles AUTO_DYNAMIC / FIXED_RAW display scale\r\n");
+    printf("# sensor gain is fixed; firmware auto-gain is disabled\r\n");
     printf("t_ms,seq,ok_tsl,tsl_ch0,tsl_ch1,tsl_visible,tsl_gain,tsl_full_norm,tsl_visible_norm,tsl_samples,ok_as7343,status2,as_gain,as_samples,ch0,ch1,ch2,ch3,ch4,ch5,ch6,ch7,ch8,ch9,ch10,ch11,ch12,ch13,ch14,ch15,ch16,ch17,sum_display\r\n");
 }
 
