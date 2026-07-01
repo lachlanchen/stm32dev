@@ -97,3 +97,14 @@ Because text rendering is disabled, the LCD uses colored boxes:
 
 If wiring is corrected while firmware is running, the boxes should turn green automatically after the next one-second probe.
 
+## 2026-07-01 Line Plot Update
+
+The first LCD build redrew the whole plot region every frame, which caused visible flashing and made missing sensors look like a blank bar plot.
+
+The current firmware uses a persistent oscilloscope-style line plot:
+
+- Cyan trace: AS7343 selected-channel spectral sum
+- Green trace: TSL2591 visible intensity estimate, `full - IR`
+- Red bottom trace: diagnostic heartbeat only when both sensors are missing
+
+The firmware now erases only a narrow vertical column and draws the next line segment. This avoids full-screen or full-panel flicker and makes the board visibly alive even before the sensors ACK.

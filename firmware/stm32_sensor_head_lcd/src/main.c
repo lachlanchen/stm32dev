@@ -43,8 +43,14 @@ static uint8_t last_status2 = 0;
 static uint32_t seq = 0;
 
 static const uint8_t spec_ch[] = {12, 6, 0, 7, 8, 15, 1, 2, 9, 13, 14, 3};
-static const uint16_t spec_nm[] = {405, 425, 450, 475, 515, 550, 555, 600, 640, 690, 745, 855};
-static const uint16_t spec_color[] = {0x801F,0x401F,0x03FF,0x04FF,0x07E0,0xAFE0,0xFFE0,0xFDE0,0xFA20,0xF820,0xF810,0x780F};
+
+static uint16_t trace_x = 0;
+static uint16_t prev_as_y = 0;
+static uint16_t prev_tsl_y = 0;
+static uint16_t prev_diag_y = 0;
+static bool trace_started = false;
+static uint32_t as_trace_max = 100;
+static uint32_t tsl_trace_max = 100;
 
 void SysTick_Handler(void)
 {
@@ -331,6 +337,11 @@ static void draw_frame(const char *scan)
     /* text disabled: vendor font renderer faults in GCC build */
     LCD_Fill(24, 104, (uint16_t)(lcddev.width - 24), 470, UI_PANEL);
     LCD_Fill(24, 488, (uint16_t)(lcddev.width - 24), 572, UI_PANEL);
+    LCD_Fill(60, 130, (uint16_t)(lcddev.width - 80), 440, BLACK);
+    POINT_COLOR = UI_GRID;
+    LCD_DrawRectangle(60, 130, (uint16_t)(lcddev.width - 80), 440);
+    trace_started = false;
+    trace_x = 0;
 }
 
 static void draw_status_boxes(bool as_ok, bool tsl_ok)
@@ -351,73 +362,65 @@ static void draw_status_boxes(bool as_ok, bool tsl_ok)
     LCD_Fill((uint16_t)(x + 410), y, (uint16_t)(x + 474), (uint16_t)(y + 42), sda_high);
 }
 
-static uint16_t scale_bar(uint32_t v, uint32_t maxv, uint16_t h)
+static uint16_t trace_y(uint32_t v, uint32_t maxv, uint16_t top, uint16_t h)
 {
-    if (maxv == 0) return 0;
-    uint32_t y = (v * h) / maxv;
-    if (y > h) y = h;
-    return (uint16_t)y;
+    if (maxv == 0) maxv = 1;
+    if (v > maxv) v = maxv;
+    return (uint16_t)(top + h - 1 - ((v * (h - 2)) / maxv));
 }
 
 static void draw_live(uint32_t t_ms, bool as_ok, bool tsl_ok)
 {
-    char line[160];
     uint16_t plot_x = 60;
     uint16_t plot_y = 130;
     uint16_t plot_w = (lcddev.width > 180) ? (uint16_t)(lcddev.width - 140) : 840;
-    uint16_t plot_h = 290;
+    uint16_t plot_h = 310;
     uint8_t n = (uint8_t)(sizeof(spec_ch) / sizeof(spec_ch[0]));
-    uint16_t bar_w = (uint16_t)(plot_w / (n * 2));
-    if (bar_w < 12) bar_w = 12;
-
     (void)t_ms;
-    LCD_Fill(28, 108, (uint16_t)(lcddev.width - 28), 466, UI_PANEL);
-    draw_status_boxes(as_ok, tsl_ok);
-    LCD_Fill(plot_x, plot_y, (uint16_t)(plot_x + plot_w), (uint16_t)(plot_y + plot_h), BLACK);
-    POINT_COLOR = UI_GRID;
-    LCD_DrawRectangle(plot_x, plot_y, (uint16_t)(plot_x + plot_w), (uint16_t)(plot_y + plot_h));
-    for (uint8_t g = 1; g < 4; g++) {
-        uint16_t yy = (uint16_t)(plot_y + (plot_h * g) / 4);
-        LCD_DrawLine(plot_x, yy, (uint16_t)(plot_x + plot_w), yy);
-    }
 
-    uint32_t maxv = 1;
-    for (uint8_t i = 0; i < n; i++) {
-        uint16_t v = last_as[spec_ch[i]];
-        if (v > maxv) maxv = v;
-    }
-    for (uint8_t i = 0; i < n; i++) {
-        uint16_t v = last_as[spec_ch[i]];
-        uint16_t bh = scale_bar(v, maxv, (uint16_t)(plot_h - 12));
-        uint16_t x0 = (uint16_t)(plot_x + 18 + i * (plot_w - 36) / n);
-        uint16_t y0 = (uint16_t)(plot_y + plot_h - bh);
-        LCD_Fill(x0, y0, (uint16_t)(x0 + bar_w), (uint16_t)(plot_y + plot_h - 1), spec_color[i]);
-        POINT_COLOR = UI_TEXT;
-        BACK_COLOR = UI_PANEL;
-        snprintf(line, sizeof(line), "%u", spec_nm[i]);
-        /* text disabled: vendor font renderer faults in GCC build */
-    }
+    draw_status_boxes(as_ok, tsl_ok);
 
     uint32_t as_sum = 0;
     for (uint8_t i = 0; i < n; i++) as_sum += last_as[spec_ch[i]];
     uint16_t visible = (last_tsl0 > last_tsl1) ? (uint16_t)(last_tsl0 - last_tsl1) : 0;
+    uint32_t diag = (!as_ok && !tsl_ok) ? ((seq & 0x20u) ? 18u : 65u) : 0u;
 
-    POINT_COLOR = UI_TEXT;
-    BACK_COLOR = UI_PANEL;
-    snprintf(line, sizeof(line), "t=%lu ms seq=%lu AS7343=%s TSL2591=%s max=%lu sum=%lu status2=0x%02X", (unsigned long)t_ms, (unsigned long)seq, as_ok ? "OK" : "MISS", tsl_ok ? "OK" : "MISS", (unsigned long)maxv, (unsigned long)as_sum, last_status2);
-    /* text disabled: vendor font renderer faults in GCC build */
-    /* text disabled: vendor font renderer faults in GCC build */
+    if (as_sum > as_trace_max) as_trace_max = as_sum;
+    else if (as_trace_max > 100) as_trace_max -= (as_trace_max / 512u) + 1u;
+    if (visible > tsl_trace_max) tsl_trace_max = visible;
+    else if (tsl_trace_max > 100) tsl_trace_max -= (tsl_trace_max / 512u) + 1u;
 
-    LCD_Fill(28, 492, (uint16_t)(lcddev.width - 28), 568, UI_PANEL);
-    snprintf(line, sizeof(line), "TSL2591 full=%u ir=%u visible=%u", last_tsl0, last_tsl1, visible);
-    /* text disabled: vendor font renderer faults in GCC build */
-    uint16_t meter_x = 44;
-    uint16_t meter_y = 536;
-    uint16_t meter_w = (uint16_t)(lcddev.width - 120);
-    uint16_t meter_h = 18;
-    LCD_Fill(meter_x, meter_y, (uint16_t)(meter_x + meter_w), (uint16_t)(meter_y + meter_h), BLACK);
-    uint16_t fill = scale_bar(visible, 65535u, meter_w);
-    LCD_Fill(meter_x, meter_y, (uint16_t)(meter_x + fill), (uint16_t)(meter_y + meter_h), UI_GREEN);
+    uint16_t x = (uint16_t)(plot_x + trace_x);
+    uint16_t erase_x1 = (uint16_t)(x + 3);
+    if (erase_x1 > (uint16_t)(plot_x + plot_w)) erase_x1 = (uint16_t)(plot_x + plot_w);
+    LCD_Fill(x, (uint16_t)(plot_y + 1), erase_x1, (uint16_t)(plot_y + plot_h - 1), BLACK);
+
+    uint16_t as_y = trace_y(as_sum, as_trace_max, plot_y, plot_h);
+    uint16_t tsl_y = trace_y(visible, tsl_trace_max, plot_y, plot_h);
+    uint16_t diag_y = trace_y(diag, 100u, plot_y, plot_h);
+
+    if (!trace_started || trace_x == 0) {
+        prev_as_y = as_y;
+        prev_tsl_y = tsl_y;
+        prev_diag_y = diag_y;
+        trace_started = true;
+    }
+
+    uint16_t prev_x = (trace_x >= 3) ? (uint16_t)(x - 3) : x;
+    POINT_COLOR = UI_CYAN;
+    LCD_DrawLine(prev_x, prev_as_y, x, as_y);
+    POINT_COLOR = UI_GREEN;
+    LCD_DrawLine(prev_x, prev_tsl_y, x, tsl_y);
+    if (!as_ok && !tsl_ok) {
+        POINT_COLOR = UI_RED;
+        LCD_DrawLine(prev_x, prev_diag_y, x, diag_y);
+    }
+
+    prev_as_y = as_y;
+    prev_tsl_y = tsl_y;
+    prev_diag_y = diag_y;
+    trace_x = (uint16_t)(trace_x + 3);
+    if (trace_x >= plot_w) trace_x = 0;
 }
 
 static void print_csv_header(void)
