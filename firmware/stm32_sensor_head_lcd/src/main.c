@@ -29,6 +29,9 @@
 #define AS_PERIOD_MS         12u
 #define TSL_PERIOD_MS        100u
 #define DRAW_PERIOD_MS       20u
+#define AS_FIXED_VISIBLE_MAX AS_FSR_FAST
+#define AS_FIXED_AUX_MAX     AS_FSR_FAST
+#define TSL_FIXED_RAW_MAX    65535u
 
 #define UI_BG                0x0841u
 #define UI_PANEL             0x18E3u
@@ -75,6 +78,7 @@ static uint32_t tsl_visible_span = 16;
 static uint32_t tsl_full_span = 16;
 static uint16_t prev_spec_y[SPEC_MAIN_COUNT];
 static bool spectrum_started = false;
+static bool scale_fixed_mode = false;
 static uint8_t tsl_gain_index = 1;
 static uint8_t tsl_gain_code = 0x10;
 static uint8_t as_gain_code = 5;
@@ -449,6 +453,10 @@ static void draw_frame(const char *scan)
     spectrum_started = false;
     intensity_started = false;
     intensity_x = 0;
+    tsl_visible_baseline = 0;
+    tsl_full_baseline = 0;
+    tsl_visible_span = 16;
+    tsl_full_span = 16;
 }
 
 static void draw_status_boxes(bool as_ok, bool tsl_ok)
@@ -490,11 +498,13 @@ static const char *tiny_pattern(char c)
     case 'I': return "111010010010111";
     case 'L': return "100100100100111";
     case 'N': return "101111111111101";
+    case 'O': return "111101101101111";
     case 'R': return "110101110101101";
     case 'S': return "111100111001111";
     case 'T': return "111010010010010";
     case 'U': return "101101101101111";
     case 'V': return "101101101101010";
+    case 'X': return "101101010101101";
     case '+': return "000010111010000";
     case '-': return "000000111000000";
     case ':': return "000010000010000";
@@ -556,17 +566,21 @@ static void draw_spectrum_axes(uint16_t x0, uint16_t y0, uint16_t w, uint16_t h)
     }
 }
 
-static void draw_intensity_axes(uint16_t x0, uint16_t y0, uint16_t w, uint16_t h)
+static void draw_intensity_axes(uint16_t x0, uint16_t y0, uint16_t w, uint16_t h, bool fixed)
 {
     POINT_COLOR = UI_GRID;
     LCD_DrawRectangle(x0, y0, (uint16_t)(x0 + w), (uint16_t)(y0 + h));
     LCD_DrawLine(x0, (uint16_t)(y0 + h / 2u), (uint16_t)(x0 + w), (uint16_t)(y0 + h / 2u));
     LCD_DrawLine(x0, (uint16_t)(y0 + h / 4u), (uint16_t)(x0 + w), (uint16_t)(y0 + h / 4u));
     LCD_DrawLine(x0, (uint16_t)(y0 + (3u * h) / 4u), (uint16_t)(x0 + w), (uint16_t)(y0 + (3u * h) / 4u));
-    uint16_t lx = (x0 > 22u) ? (uint16_t)(x0 - 22u) : 0u;
-    draw_tiny_text(lx, (y0 > 5u) ? (uint16_t)(y0 - 5u) : y0, "+", UI_GRID, 2);
-    draw_tiny_text(lx, (uint16_t)(y0 + h / 2u - 5u), "0", UI_GRID, 2);
-    draw_tiny_text(lx, (uint16_t)(y0 + h - 11u), "-", UI_GRID, 2);
+    if (fixed) {
+        draw_plot_percent_labels(x0, y0, h);
+    } else {
+        uint16_t lx = (x0 > 22u) ? (uint16_t)(x0 - 22u) : 0u;
+        draw_tiny_text(lx, (y0 > 5u) ? (uint16_t)(y0 - 5u) : y0, "+", UI_GRID, 2);
+        draw_tiny_text(lx, (uint16_t)(y0 + h / 2u - 5u), "0", UI_GRID, 2);
+        draw_tiny_text(lx, (uint16_t)(y0 + h - 11u), "-", UI_GRID, 2);
+    }
 }
 
 static uint16_t trace_y(uint32_t v, uint32_t maxv, uint16_t top, uint16_t h)
@@ -611,11 +625,15 @@ static void draw_aux_spectrum_bars(uint16_t x0, uint16_t y0, uint16_t w, bool as
     vals[1] = spectrum_value(SPEC_CLEAR_AVG);  /* clear / VIS average */
     vals[2] = spectrum_value(SPEC_FD_AVG);     /* flicker-detect average */
 
-    uint32_t peak = 1;
-    for (uint8_t i = 0; i < 3; i++) if (vals[i] > peak) peak = vals[i];
-    if (peak > as_aux_bar_max) as_aux_bar_max = peak;
-    else as_aux_bar_max = ((as_aux_bar_max * 31u) + peak + 1u) / 32u;
-    if (as_aux_bar_max < 100u) as_aux_bar_max = 100u;
+    if (scale_fixed_mode) {
+        as_aux_bar_max = AS_FIXED_AUX_MAX;
+    } else {
+        uint32_t peak = 1;
+        for (uint8_t i = 0; i < 3; i++) if (vals[i] > peak) peak = vals[i];
+        if (peak > as_aux_bar_max) as_aux_bar_max = peak;
+        else as_aux_bar_max = ((as_aux_bar_max * 31u) + peak + 1u) / 32u;
+        if (as_aux_bar_max < 100u) as_aux_bar_max = 100u;
+    }
 
     LCD_Fill(bx, by, (uint16_t)(bx + bw), (uint16_t)(by + bh), BLACK);
     POINT_COLOR = UI_GRID;
@@ -644,16 +662,20 @@ static void draw_tsl_channel_bars(bool tsl_ok)
     uint16_t x = (lcddev.width > (w + 28u)) ? (uint16_t)(lcddev.width - w - 28u) : 520u;
     uint16_t y = 18u;
     uint32_t vals[2] = {last_tsl0, last_tsl1};
-    uint32_t peak = (vals[0] > vals[1]) ? vals[0] : vals[1];
-    if (peak < 16u) peak = 16u;
-    if (peak > tsl_bar_max) tsl_bar_max = peak;
-    else tsl_bar_max = ((tsl_bar_max * 31u) + peak + 1u) / 32u;
-    if (tsl_bar_max < 64u) tsl_bar_max = 64u;
+    if (scale_fixed_mode) {
+        tsl_bar_max = TSL_FIXED_RAW_MAX;
+    } else {
+        uint32_t peak = (vals[0] > vals[1]) ? vals[0] : vals[1];
+        if (peak < 16u) peak = 16u;
+        if (peak > tsl_bar_max) tsl_bar_max = peak;
+        else tsl_bar_max = ((tsl_bar_max * 31u) + peak + 1u) / 32u;
+        if (tsl_bar_max < 64u) tsl_bar_max = 64u;
+    }
 
     LCD_Fill(x, y, (uint16_t)(x + w), (uint16_t)(y + h), BLACK);
     POINT_COLOR = UI_GRID;
     LCD_DrawRectangle(x, y, (uint16_t)(x + w), (uint16_t)(y + h));
-    draw_tiny_text((uint16_t)(x + 8u), (uint16_t)(y + 6u), "TSL C0 C1", UI_GRID, 2);
+    draw_tiny_text((uint16_t)(x + 8u), (uint16_t)(y + 6u), scale_fixed_mode ? "FIX C0 C1" : "AUTO C0 C1", UI_GRID, 2);
 
     for (uint8_t i = 0; i < 2; i++) {
         uint16_t bar_x = (uint16_t)(x + 92u + i * 58u);
@@ -695,8 +717,12 @@ static void draw_live(uint32_t t_ms, bool as_ok, bool tsl_ok)
         uint16_t v = spectrum_value(spec_ch[i]);
         if (v > visible_peak) visible_peak = v;
     }
-    if (visible_peak > as_trace_max) as_trace_max = visible_peak;
-    else if (as_trace_max > 100) as_trace_max -= (as_trace_max / 512u) + 1u;
+    if (scale_fixed_mode) {
+        as_trace_max = AS_FIXED_VISIBLE_MAX;
+    } else {
+        if (visible_peak > as_trace_max) as_trace_max = visible_peak;
+        else if (as_trace_max > 100) as_trace_max -= (as_trace_max / 512u) + 1u;
+    }
 
     uint16_t spec_y[SPEC_MAIN_COUNT];
     uint32_t spec_max = (as_trace_max < 100u) ? 100u : as_trace_max;
@@ -733,10 +759,15 @@ static void draw_live(uint32_t t_ms, bool as_ok, bool tsl_ok)
     uint16_t erase_x1 = (uint16_t)(x + 3);
     if (erase_x1 > (uint16_t)(right_x + right_w)) erase_x1 = (uint16_t)(right_x + right_w);
     LCD_Fill(x, (uint16_t)(plot_y + 1), erase_x1, (uint16_t)(plot_y + plot_h - 1), BLACK);
-    draw_intensity_axes(right_x, plot_y, right_w, plot_h);
+    draw_intensity_axes(right_x, plot_y, right_w, plot_h, scale_fixed_mode);
 
-    uint16_t tsl_y = centered_trace_y(visible, &tsl_visible_baseline, &tsl_visible_span, plot_y, plot_h);
-    uint16_t full_y = centered_trace_y(full_norm, &tsl_full_baseline, &tsl_full_span, plot_y, plot_h);
+    uint16_t raw_visible = (last_tsl0 > last_tsl1) ? (uint16_t)(last_tsl0 - last_tsl1) : 0u;
+    uint16_t tsl_y = scale_fixed_mode ?
+        trace_y(raw_visible, TSL_FIXED_RAW_MAX, plot_y, plot_h) :
+        centered_trace_y(visible, &tsl_visible_baseline, &tsl_visible_span, plot_y, plot_h);
+    uint16_t full_y = scale_fixed_mode ?
+        trace_y(last_tsl0, TSL_FIXED_RAW_MAX, plot_y, plot_h) :
+        centered_trace_y(full_norm, &tsl_full_baseline, &tsl_full_span, plot_y, plot_h);
     uint16_t diag_y = trace_y(diag, 100u, plot_y, plot_h);
 
     if (!intensity_started || intensity_x == 0) {
@@ -767,7 +798,22 @@ static void print_csv_header(void)
 {
     printf("# STM32H743 sensor head\r\n");
     printf("# AS7343 addr=0x39 TSL2591 addr=0x29 I2C1 PB8/PB9\r\n");
+    printf("# serial command: s toggles AUTO_DYNAMIC / FIXED_RAW display scale\r\n");
     printf("t_ms,seq,ok_tsl,tsl_ch0,tsl_ch1,tsl_visible,tsl_gain,tsl_full_norm,tsl_visible_norm,tsl_samples,ok_as7343,status2,as_gain,as_samples,ch0,ch1,ch2,ch3,ch4,ch5,ch6,ch7,ch8,ch9,ch10,ch11,ch12,ch13,ch14,ch15,ch16,ch17,sum_display\r\n");
+}
+
+static bool poll_serial_commands(void)
+{
+    bool changed = false;
+    uint8_t c = 0;
+    while (HAL_UART_Receive(&UART1_Handler, &c, 1, 0) == HAL_OK) {
+        if (c == 's' || c == 'S') {
+            scale_fixed_mode = !scale_fixed_mode;
+            changed = true;
+            printf("# scale_mode=%s\r\n", scale_fixed_mode ? "FIXED_RAW" : "AUTO_DYNAMIC");
+        }
+    }
+    return changed;
 }
 
 static void print_csv(uint32_t t_ms, bool as_ok, bool tsl_ok)
@@ -827,6 +873,10 @@ int main(void)
 
     while (1) {
         uint32_t now = HAL_GetTick();
+        if (poll_serial_commands()) {
+            draw_frame(scan);
+        }
+
         if ((now - last_probe) > 1000u && (!ok_tsl || !ok_as7343)) {
             i2c_select_working_bus();
             scan_i2c(scan, sizeof(scan));
