@@ -204,3 +204,61 @@ green       = visible estimate deviation around average
 ```
 
 This makes stable light sit near the middle of the panel. Brightening moves the trace upward; dimming moves it downward. The absolute raw values are still preserved in `last_tsl0` and `last_tsl1`.
+
+## 2026-07-01 Interleaved Hardware-Limit Spectrum/Intensity Readout
+
+The acquisition loop now separates sensor timing from LCD drawing:
+
+```text
+AS7343 spectrum read period: 12 ms target
+TSL2591 intensity read period: 100 ms target
+LCD draw period: 20 ms target
+```
+
+This is not true electrical parallelism because both sensors share one I2C bus, but it is parallel-style scheduling: the firmware no longer blocks the whole loop for each spectrum frame.
+
+AS7343 was changed from blocking one-shot mode to continuous fast mode:
+
+```text
+old: restart AS7343 measurement + wait 180 ms every spectrum read
+new: configure once, read data registers on a 12 ms schedule
+```
+
+AS7343 integration timing follows the datasheet equation:
+
+```text
+integration time = (ATIME + 1) * (ASTEP + 1) * 2.78 us
+ATIME = 5
+ASTEP = 599
+integration time ~= 10 ms
+```
+
+The AS7343 path also uses simple auto-gain:
+
+```text
+peak > 85% of current fast full scale -> lower gain
+peak < 15% of current fast full scale -> raise gain
+```
+
+TSL2591 remains at its fastest meaningful mode:
+
+```text
+integration time = 100 ms
+new optical samples ~= 10 Hz
+```
+
+Reading TSL2591 faster than this only repeats the same ADC result.
+
+Live validation after flashing:
+
+```text
+ok_as7343 = 1
+ok_tsl    = 1
+AS7343 channels = nonzero
+TSL full  = 0x3587
+TSL IR    = 0x0b48
+AS samples after boot = 0x353
+target voltage = about 3.21 V
+```
+
+The left spectrum plot should now update from real AS7343 data, and the right intensity plot should update from real TSL2591 data.

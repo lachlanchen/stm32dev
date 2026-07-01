@@ -23,6 +23,13 @@
 #define AS_REG_ASTEP_L       0xD4u
 #define AS_REG_CFG20         0xD6u
 
+#define AS_ATIME_FAST        5u
+#define AS_ASTEP_FAST        599u
+#define AS_FSR_FAST          ((uint32_t)(AS_ATIME_FAST + 1u) * (uint32_t)(AS_ASTEP_FAST + 1u))
+#define AS_PERIOD_MS         12u
+#define TSL_PERIOD_MS        100u
+#define DRAW_PERIOD_MS       20u
+
 #define UI_BG                0x0841u
 #define UI_PANEL             0x18E3u
 #define UI_GRID              0x39E7u
@@ -58,6 +65,9 @@ static uint16_t prev_spec_y[sizeof(spec_ch)];
 static bool spectrum_started = false;
 static uint8_t tsl_gain_index = 1;
 static uint8_t tsl_gain_code = 0x10;
+static uint8_t as_gain_code = 5;
+static uint32_t as_sample_count = 0;
+static uint32_t tsl_sample_count = 0;
 
 void SysTick_Handler(void)
 {
@@ -78,7 +88,7 @@ static uint8_t i2c_mode = 0;
 
 static void bb_delay(void)
 {
-    delay_us(20);
+    delay_us(5);
 }
 
 static void bb_scl(bool high)
@@ -234,31 +244,48 @@ static bool as7343_configure(void)
     if (id != 0x81u) return false;
     if (!as_set_bank(false)) return false;
     if (!i2c_write8(AS7343_ADDR, AS_REG_ENABLE, 0x01u)) return false;
-    HAL_Delay(10);
-    if (!i2c_write8(AS7343_ADDR, AS_REG_ATIME, 29u)) return false;
-    if (!i2c_write16_le(AS7343_ADDR, AS_REG_ASTEP_L, 599u)) return false;
-    if (!i2c_write8(AS7343_ADDR, AS_REG_CFG1, 5u)) return false; /* 16x gain */
+    HAL_Delay(2);
+    if (!i2c_write8(AS7343_ADDR, AS_REG_ATIME, AS_ATIME_FAST)) return false;
+    if (!i2c_write16_le(AS7343_ADDR, AS_REG_ASTEP_L, AS_ASTEP_FAST)) return false;
+    if (!i2c_write8(AS7343_ADDR, AS_REG_CFG1, as_gain_code)) return false; /* 16x initial gain */
     uint8_t cfg20 = 0;
     if (!i2c_read8(AS7343_ADDR, AS_REG_CFG20, &cfg20)) return false;
     cfg20 &= (uint8_t)~0x60u;
     cfg20 |= 0x60u; /* auto SMUX, 18-channel mode */
     if (!i2c_write8(AS7343_ADDR, AS_REG_CFG20, cfg20)) return false;
     if (!i2c_write8(AS7343_ADDR, AS_REG_ENABLE, 0x03u)) return false;
-    HAL_Delay(180);
+    HAL_Delay(AS_PERIOD_MS + 2u);
     return true;
+}
+
+static void as7343_auto_gain(const uint16_t *channels)
+{
+    uint16_t peak = 0;
+    for (uint8_t i = 0; i < 18; i++) {
+        if (channels[i] > peak) peak = channels[i];
+    }
+
+    uint8_t next = as_gain_code;
+    if ((uint32_t)peak > (AS_FSR_FAST * 85u) / 100u && next > 0u) {
+        next--;
+    } else if ((uint32_t)peak < (AS_FSR_FAST * 15u) / 100u && next < 10u) {
+        next++;
+    }
+
+    if (next != as_gain_code) {
+        as_gain_code = next;
+        i2c_write8(AS7343_ADDR, AS_REG_CFG1, as_gain_code);
+    }
 }
 
 static bool as7343_read18(uint16_t *channels, uint8_t *status2)
 {
     uint8_t raw[36];
     if (!as_set_bank(false)) return false;
-    if (!i2c_write8(AS7343_ADDR, AS_REG_ENABLE, 0x01u)) return false;
-    HAL_Delay(2);
-    if (!i2c_write8(AS7343_ADDR, AS_REG_ENABLE, 0x03u)) return false;
-    HAL_Delay(180);
     i2c_read8(AS7343_ADDR, AS_REG_STATUS2, status2);
     if (!i2c_read_bytes(AS7343_ADDR, AS_REG_DATA0, raw, sizeof(raw))) return false;
     for (uint8_t i = 0; i < 18; i++) channels[i] = ((uint16_t)raw[2u * i + 1u] << 8) | raw[2u * i];
+    as7343_auto_gain(channels);
     return true;
 }
 
@@ -537,6 +564,11 @@ int main(void)
 {
     char scan[128];
     uint32_t last_probe = 0;
+    uint32_t last_as_read = 0;
+    uint32_t last_tsl_read = 0;
+    uint32_t last_draw = 0;
+    bool as_ok_live = false;
+    bool tsl_ok_live = false;
 
     Cache_Enable();
     HAL_Init();
@@ -568,12 +600,27 @@ int main(void)
             if (!ok_as7343) ok_as7343 = i2c_present(AS7343_ADDR) && as7343_configure();
             last_probe = now;
         }
-        bool tsl_ok = ok_tsl && tsl2591_read(&last_tsl0, &last_tsl1);
-        bool as_ok = ok_as7343 && as7343_read18(last_as, &last_status2);
-        seq++;
-        print_csv(now, as_ok, tsl_ok);
-        draw_live(now, as_ok, tsl_ok);
-        HAL_Delay(20);
+
+        if (ok_as7343 && (now - last_as_read) >= AS_PERIOD_MS) {
+            as_ok_live = as7343_read18(last_as, &last_status2);
+            if (as_ok_live) as_sample_count++;
+            last_as_read = now;
+        }
+
+        if (ok_tsl && (now - last_tsl_read) >= TSL_PERIOD_MS) {
+            tsl_ok_live = tsl2591_read(&last_tsl0, &last_tsl1);
+            if (tsl_ok_live) tsl_sample_count++;
+            last_tsl_read = now;
+        }
+
+        if ((now - last_draw) >= DRAW_PERIOD_MS) {
+            seq++;
+            print_csv(now, as_ok_live, tsl_ok_live);
+            draw_live(now, as_ok_live, tsl_ok_live);
+            last_draw = now;
+        }
+
+        HAL_Delay(1);
     }
 }
 
