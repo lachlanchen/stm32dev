@@ -190,3 +190,17 @@ The Baidu Netdisk STM32 package remains read-only reference material. Working fi
 ```text
 C:\Users\Administrator\Projects\stm32dev\firmware\stm32_sensor_head_lcd
 ```
+
+## 2026-07-01 Centered Intensity Visualization
+
+The TSL intensity traces previously used absolute autoscale. When the current reading became the local maximum, the line appeared pinned near the top of the plot.
+
+The current firmware uses a centered, baseline-tracking display for the right-side TSL plot:
+
+```text
+center line = slow moving average
+orange      = full channel deviation around average
+green       = visible estimate deviation around average
+```
+
+This makes stable light sit near the middle of the panel. Brightening moves the trace upward; dimming moves it downward. The absolute raw values are still preserved in `last_tsl0` and `last_tsl1`.

@@ -50,8 +50,10 @@ static uint16_t prev_full_y = 0;
 static uint16_t prev_diag_y = 0;
 static bool intensity_started = false;
 static uint32_t as_trace_max = 100;
-static uint32_t tsl_trace_max = 100;
-static uint32_t full_trace_max = 100;
+static uint32_t tsl_visible_baseline = 0;
+static uint32_t tsl_full_baseline = 0;
+static uint32_t tsl_visible_span = 16;
+static uint32_t tsl_full_span = 16;
 static uint16_t prev_spec_y[sizeof(spec_ch)];
 static bool spectrum_started = false;
 static uint8_t tsl_gain_index = 1;
@@ -378,6 +380,7 @@ static void draw_frame(const char *scan)
     POINT_COLOR = UI_GRID;
     LCD_DrawRectangle(left_x, panel_y, (uint16_t)(left_x + left_w), (uint16_t)(panel_y + panel_h));
     LCD_DrawRectangle(right_x, panel_y, (uint16_t)(right_x + right_w), (uint16_t)(panel_y + panel_h));
+    LCD_DrawLine(right_x, (uint16_t)(panel_y + panel_h / 2), (uint16_t)(right_x + right_w), (uint16_t)(panel_y + panel_h / 2));
     spectrum_started = false;
     intensity_started = false;
     intensity_x = 0;
@@ -408,6 +411,30 @@ static uint16_t trace_y(uint32_t v, uint32_t maxv, uint16_t top, uint16_t h)
     return (uint16_t)(top + h - 1 - ((v * (h - 2)) / maxv));
 }
 
+static uint16_t centered_trace_y(uint32_t v, uint32_t *baseline, uint32_t *span, uint16_t top, uint16_t h)
+{
+    if (*baseline == 0 && v > 0) *baseline = v;
+
+    int32_t diff = (int32_t)v - (int32_t)(*baseline);
+    uint32_t adiff = (diff < 0) ? (uint32_t)(-diff) : (uint32_t)diff;
+    uint32_t target_span = adiff * 4u + 8u;
+    if (target_span < 16u) target_span = 16u;
+
+    *baseline = ((*baseline * 63u) + v) / 64u;
+    if (target_span > *span) *span = target_span;
+    else *span = ((*span * 127u) + target_span) / 128u;
+    if (*span < 16u) *span = 16u;
+
+    int32_t center = (int32_t)top + (int32_t)h / 2;
+    int32_t half = ((int32_t)h / 2) - 8;
+    int32_t y = center - ((diff * half) / (int32_t)(*span));
+    int32_t min_y = (int32_t)top + 2;
+    int32_t max_y = (int32_t)top + (int32_t)h - 2;
+    if (y < min_y) y = min_y;
+    if (y > max_y) y = max_y;
+    return (uint16_t)y;
+}
+
 static void draw_live(uint32_t t_ms, bool as_ok, bool tsl_ok)
 {
     uint16_t plot_y = 130;
@@ -429,10 +456,6 @@ static void draw_live(uint32_t t_ms, bool as_ok, bool tsl_ok)
 
     if (as_sum > as_trace_max) as_trace_max = as_sum;
     else if (as_trace_max > 100) as_trace_max -= (as_trace_max / 512u) + 1u;
-    if (visible > tsl_trace_max) tsl_trace_max = visible;
-    else if (tsl_trace_max > 100) tsl_trace_max -= (tsl_trace_max / 512u) + 1u;
-    if (last_tsl0 > full_trace_max) full_trace_max = last_tsl0;
-    else if (full_trace_max > 100) full_trace_max -= (full_trace_max / 512u) + 1u;
 
     uint16_t spec_y[sizeof(spec_ch)];
     uint32_t spec_max = 1;
@@ -465,8 +488,8 @@ static void draw_live(uint32_t t_ms, bool as_ok, bool tsl_ok)
     if (erase_x1 > (uint16_t)(right_x + right_w)) erase_x1 = (uint16_t)(right_x + right_w);
     LCD_Fill(x, (uint16_t)(plot_y + 1), erase_x1, (uint16_t)(plot_y + plot_h - 1), BLACK);
 
-    uint16_t tsl_y = trace_y(visible, tsl_trace_max, plot_y, plot_h);
-    uint16_t full_y = trace_y(last_tsl0, full_trace_max, plot_y, plot_h);
+    uint16_t tsl_y = centered_trace_y(visible, &tsl_visible_baseline, &tsl_visible_span, plot_y, plot_h);
+    uint16_t full_y = centered_trace_y(last_tsl0, &tsl_full_baseline, &tsl_full_span, plot_y, plot_h);
     uint16_t diag_y = trace_y(diag, 100u, plot_y, plot_h);
 
     if (!intensity_started || intensity_x == 0) {
