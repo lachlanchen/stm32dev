@@ -44,13 +44,14 @@ static uint32_t seq = 0;
 
 static const uint8_t spec_ch[] = {12, 6, 0, 7, 8, 15, 1, 2, 9, 13, 14, 3};
 
-static uint16_t trace_x = 0;
-static uint16_t prev_as_y = 0;
+static uint16_t intensity_x = 0;
 static uint16_t prev_tsl_y = 0;
 static uint16_t prev_diag_y = 0;
-static bool trace_started = false;
+static bool intensity_started = false;
 static uint32_t as_trace_max = 100;
 static uint32_t tsl_trace_max = 100;
+static uint16_t prev_spec_y[sizeof(spec_ch)];
+static bool spectrum_started = false;
 
 void SysTick_Handler(void)
 {
@@ -337,11 +338,23 @@ static void draw_frame(const char *scan)
     /* text disabled: vendor font renderer faults in GCC build */
     LCD_Fill(24, 104, (uint16_t)(lcddev.width - 24), 470, UI_PANEL);
     LCD_Fill(24, 488, (uint16_t)(lcddev.width - 24), 572, UI_PANEL);
-    LCD_Fill(60, 130, (uint16_t)(lcddev.width - 80), 440, BLACK);
+
+    uint16_t panel_y = 130;
+    uint16_t panel_h = 310;
+    uint16_t gap = 36;
+    uint16_t left_x = 46;
+    uint16_t left_w = (uint16_t)((lcddev.width - 120 - gap) / 2);
+    uint16_t right_x = (uint16_t)(left_x + left_w + gap);
+    uint16_t right_w = (uint16_t)(lcddev.width - right_x - 46);
+
+    LCD_Fill(left_x, panel_y, (uint16_t)(left_x + left_w), (uint16_t)(panel_y + panel_h), BLACK);
+    LCD_Fill(right_x, panel_y, (uint16_t)(right_x + right_w), (uint16_t)(panel_y + panel_h), BLACK);
     POINT_COLOR = UI_GRID;
-    LCD_DrawRectangle(60, 130, (uint16_t)(lcddev.width - 80), 440);
-    trace_started = false;
-    trace_x = 0;
+    LCD_DrawRectangle(left_x, panel_y, (uint16_t)(left_x + left_w), (uint16_t)(panel_y + panel_h));
+    LCD_DrawRectangle(right_x, panel_y, (uint16_t)(right_x + right_w), (uint16_t)(panel_y + panel_h));
+    spectrum_started = false;
+    intensity_started = false;
+    intensity_x = 0;
 }
 
 static void draw_status_boxes(bool as_ok, bool tsl_ok)
@@ -371,10 +384,13 @@ static uint16_t trace_y(uint32_t v, uint32_t maxv, uint16_t top, uint16_t h)
 
 static void draw_live(uint32_t t_ms, bool as_ok, bool tsl_ok)
 {
-    uint16_t plot_x = 60;
     uint16_t plot_y = 130;
-    uint16_t plot_w = (lcddev.width > 180) ? (uint16_t)(lcddev.width - 140) : 840;
     uint16_t plot_h = 310;
+    uint16_t gap = 36;
+    uint16_t left_x = 46;
+    uint16_t left_w = (uint16_t)((lcddev.width - 120 - gap) / 2);
+    uint16_t right_x = (uint16_t)(left_x + left_w + gap);
+    uint16_t right_w = (uint16_t)(lcddev.width - right_x - 46);
     uint8_t n = (uint8_t)(sizeof(spec_ch) / sizeof(spec_ch[0]));
     (void)t_ms;
 
@@ -390,37 +406,58 @@ static void draw_live(uint32_t t_ms, bool as_ok, bool tsl_ok)
     if (visible > tsl_trace_max) tsl_trace_max = visible;
     else if (tsl_trace_max > 100) tsl_trace_max -= (tsl_trace_max / 512u) + 1u;
 
-    uint16_t x = (uint16_t)(plot_x + trace_x);
+    uint16_t spec_y[sizeof(spec_ch)];
+    uint32_t spec_max = 1;
+    for (uint8_t i = 0; i < n; i++) {
+        uint16_t v = last_as[spec_ch[i]];
+        if (v > spec_max) spec_max = v;
+    }
+    if (spec_max < 100) spec_max = 100;
+
+    for (uint8_t i = 0; i < n; i++) {
+        uint16_t x0 = (uint16_t)(left_x + 16 + ((uint32_t)i * (left_w - 32)) / (n - 1));
+        spec_y[i] = trace_y(last_as[spec_ch[i]], spec_max, plot_y, plot_h);
+        if (spectrum_started && i > 0) {
+            uint16_t px0 = (uint16_t)(left_x + 16 + ((uint32_t)(i - 1) * (left_w - 32)) / (n - 1));
+            POINT_COLOR = BLACK;
+            LCD_DrawLine(px0, prev_spec_y[i - 1], x0, prev_spec_y[i]);
+        }
+    }
+    for (uint8_t i = 1; i < n; i++) {
+        uint16_t x0 = (uint16_t)(left_x + 16 + ((uint32_t)(i - 1) * (left_w - 32)) / (n - 1));
+        uint16_t x1 = (uint16_t)(left_x + 16 + ((uint32_t)i * (left_w - 32)) / (n - 1));
+        POINT_COLOR = as_ok ? UI_CYAN : UI_RED;
+        LCD_DrawLine(x0, spec_y[i - 1], x1, spec_y[i]);
+    }
+    memcpy(prev_spec_y, spec_y, sizeof(prev_spec_y));
+    spectrum_started = true;
+
+    uint16_t x = (uint16_t)(right_x + intensity_x);
     uint16_t erase_x1 = (uint16_t)(x + 3);
-    if (erase_x1 > (uint16_t)(plot_x + plot_w)) erase_x1 = (uint16_t)(plot_x + plot_w);
+    if (erase_x1 > (uint16_t)(right_x + right_w)) erase_x1 = (uint16_t)(right_x + right_w);
     LCD_Fill(x, (uint16_t)(plot_y + 1), erase_x1, (uint16_t)(plot_y + plot_h - 1), BLACK);
 
-    uint16_t as_y = trace_y(as_sum, as_trace_max, plot_y, plot_h);
     uint16_t tsl_y = trace_y(visible, tsl_trace_max, plot_y, plot_h);
     uint16_t diag_y = trace_y(diag, 100u, plot_y, plot_h);
 
-    if (!trace_started || trace_x == 0) {
-        prev_as_y = as_y;
+    if (!intensity_started || intensity_x == 0) {
         prev_tsl_y = tsl_y;
         prev_diag_y = diag_y;
-        trace_started = true;
+        intensity_started = true;
     }
 
-    uint16_t prev_x = (trace_x >= 3) ? (uint16_t)(x - 3) : x;
-    POINT_COLOR = UI_CYAN;
-    LCD_DrawLine(prev_x, prev_as_y, x, as_y);
-    POINT_COLOR = UI_GREEN;
+    uint16_t prev_x = (intensity_x >= 3) ? (uint16_t)(x - 3) : x;
+    POINT_COLOR = tsl_ok ? UI_GREEN : UI_RED;
     LCD_DrawLine(prev_x, prev_tsl_y, x, tsl_y);
     if (!as_ok && !tsl_ok) {
         POINT_COLOR = UI_RED;
         LCD_DrawLine(prev_x, prev_diag_y, x, diag_y);
     }
 
-    prev_as_y = as_y;
     prev_tsl_y = tsl_y;
     prev_diag_y = diag_y;
-    trace_x = (uint16_t)(trace_x + 3);
-    if (trace_x >= plot_w) trace_x = 0;
+    intensity_x = (uint16_t)(intensity_x + 3);
+    if (intensity_x >= right_w) intensity_x = 0;
 }
 
 static void print_csv_header(void)

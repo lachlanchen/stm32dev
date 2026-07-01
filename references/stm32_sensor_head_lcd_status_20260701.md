@@ -108,3 +108,27 @@ The current firmware uses a persistent oscilloscope-style line plot:
 - Red bottom trace: diagnostic heartbeat only when both sensors are missing
 
 The firmware now erases only a narrow vertical column and draws the next line segment. This avoids full-screen or full-panel flicker and makes the board visibly alive even before the sensors ACK.
+
+## 2026-07-01 Split-Screen Update
+
+The current flashed version separates the two measurements spatially:
+
+- Left panel: AS7343 spectral shape as a connected polyline across the selected channels
+- Right panel: TSL2591 visible-intensity trace over time
+
+The display no longer mixes spectrum and intensity into one plot. If AS7343 is missing, the left spectral line is drawn in red. If TSL2591 is missing, the right intensity line is drawn in red. If both are missing, the right panel also shows a red heartbeat trace so the screen still proves the firmware loop is alive.
+
+Live SWD detection after flashing the split-screen firmware:
+
+```text
+i2c_mode   = 0
+SCL/SDA    = PB8/PB9
+ok_as7343  = 0
+ok_tsl     = 0
+last_as[]  = all zero
+last_tsl0  = 0
+last_tsl1  = 0
+seq        = incrementing
+```
+
+Conclusion: the STM32 firmware and LCD visualization work, but the sensors are still not ACKing on the tested I2C pin modes. Correct wiring should make the status boxes and traces turn live without reflashing.
