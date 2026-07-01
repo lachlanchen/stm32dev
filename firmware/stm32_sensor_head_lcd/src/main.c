@@ -38,6 +38,8 @@
 #define UI_ORANGE            0xFD20u
 #define UI_CYAN              0x07FFu
 #define UI_RED               0xF800u
+#define UI_YELLOW            0xFFE0u
+#define UI_BLUE              0x041Fu
 
 I2C_HandleTypeDef hi2c1;
 
@@ -57,6 +59,7 @@ static uint32_t seq = 0;
 static const uint8_t spec_ch[] = {
     12, 6, 0, 7, 8, 15, 1, 2, 9, 13, 14, 3, SPEC_CLEAR_AVG, SPEC_FD_AVG
 };
+#define SPEC_MAIN_COUNT       11u
 
 static uint16_t intensity_x = 0;
 static uint16_t prev_tsl_y = 0;
@@ -64,11 +67,13 @@ static uint16_t prev_full_y = 0;
 static uint16_t prev_diag_y = 0;
 static bool intensity_started = false;
 static uint32_t as_trace_max = 100;
+static uint32_t as_aux_bar_max = 100;
+static uint32_t tsl_bar_max = 1024;
 static uint32_t tsl_visible_baseline = 0;
 static uint32_t tsl_full_baseline = 0;
 static uint32_t tsl_visible_span = 16;
 static uint32_t tsl_full_span = 16;
-static uint16_t prev_spec_y[sizeof(spec_ch)];
+static uint16_t prev_spec_y[SPEC_MAIN_COUNT];
 static bool spectrum_started = false;
 static uint8_t tsl_gain_index = 1;
 static uint8_t tsl_gain_code = 0x10;
@@ -464,6 +469,106 @@ static void draw_status_boxes(bool as_ok, bool tsl_ok)
     LCD_Fill((uint16_t)(x + 410), y, (uint16_t)(x + 474), (uint16_t)(y + 42), sda_high);
 }
 
+static const char *tiny_pattern(char c)
+{
+    switch (c) {
+    case '0': return "111101101101111";
+    case '1': return "010110010010111";
+    case '2': return "111001111100111";
+    case '3': return "111001111001111";
+    case '4': return "101101111001001";
+    case '5': return "111100111001111";
+    case '6': return "111100111101111";
+    case '7': return "111001010010010";
+    case '8': return "111101111101111";
+    case '9': return "111101111001111";
+    case 'A': return "010101111101101";
+    case 'C': return "111100100100111";
+    case 'D': return "110101101101110";
+    case 'F': return "111100110100100";
+    case 'H': return "101101111101101";
+    case 'I': return "111010010010111";
+    case 'L': return "100100100100111";
+    case 'N': return "101111111111101";
+    case 'R': return "110101110101101";
+    case 'S': return "111100111001111";
+    case 'T': return "111010010010010";
+    case 'U': return "101101101101111";
+    case 'V': return "101101101101010";
+    case '+': return "000010111010000";
+    case '-': return "000000111000000";
+    case ':': return "000010000010000";
+    case '.': return "000000000000010";
+    default: return "000000000000000";
+    }
+}
+
+static void draw_tiny_char(uint16_t x, uint16_t y, char c, uint16_t color, uint8_t scale)
+{
+    const char *p = tiny_pattern(c);
+    if (scale == 0) scale = 1;
+    for (uint8_t row = 0; row < 5; row++) {
+        for (uint8_t col = 0; col < 3; col++) {
+            if (p[row * 3u + col] == '1') {
+                LCD_Fill((uint16_t)(x + col * scale),
+                         (uint16_t)(y + row * scale),
+                         (uint16_t)(x + col * scale + scale - 1u),
+                         (uint16_t)(y + row * scale + scale - 1u),
+                         color);
+            }
+        }
+    }
+}
+
+static void draw_tiny_text(uint16_t x, uint16_t y, const char *s, uint16_t color, uint8_t scale)
+{
+    while (*s) {
+        draw_tiny_char(x, y, *s, color, scale);
+        x = (uint16_t)(x + 4u * scale);
+        s++;
+    }
+}
+
+static void draw_plot_percent_labels(uint16_t x0, uint16_t y0, uint16_t h)
+{
+    uint16_t lx = (x0 > 34u) ? (uint16_t)(x0 - 34u) : 0u;
+    draw_tiny_text(lx, (y0 > 5u) ? (uint16_t)(y0 - 5u) : y0, "100", UI_GRID, 2);
+    draw_tiny_text((uint16_t)(lx + 8u), (uint16_t)(y0 + h / 2u - 5u), "50", UI_GRID, 2);
+    draw_tiny_text((uint16_t)(lx + 16u), (uint16_t)(y0 + h - 11u), "0", UI_GRID, 2);
+}
+
+static void draw_spectrum_axes(uint16_t x0, uint16_t y0, uint16_t w, uint16_t h)
+{
+    POINT_COLOR = UI_GRID;
+    LCD_DrawRectangle(x0, y0, (uint16_t)(x0 + w), (uint16_t)(y0 + h));
+    LCD_DrawLine(x0, (uint16_t)(y0 + h / 2u), (uint16_t)(x0 + w), (uint16_t)(y0 + h / 2u));
+    LCD_DrawLine(x0, (uint16_t)(y0 + h / 4u), (uint16_t)(x0 + w), (uint16_t)(y0 + h / 4u));
+    LCD_DrawLine(x0, (uint16_t)(y0 + (3u * h) / 4u), (uint16_t)(x0 + w), (uint16_t)(y0 + (3u * h) / 4u));
+    draw_plot_percent_labels(x0, y0, h);
+
+    static const uint8_t tick_idx[] = {0, 5, 9, 10};
+    static const char *tick_lab[] = {"405", "550", "690", "745"};
+    for (uint8_t i = 0; i < sizeof(tick_idx); i++) {
+        uint16_t tx = (uint16_t)(x0 + 16u + ((uint32_t)tick_idx[i] * (w - 32u)) / (SPEC_MAIN_COUNT - 1u));
+        POINT_COLOR = UI_GRID;
+        LCD_DrawLine(tx, (uint16_t)(y0 + h - 5u), tx, (uint16_t)(y0 + h + 5u));
+        draw_tiny_text((tx > 12u) ? (uint16_t)(tx - 12u) : tx, (uint16_t)(y0 + h + 10u), tick_lab[i], UI_GRID, 2);
+    }
+}
+
+static void draw_intensity_axes(uint16_t x0, uint16_t y0, uint16_t w, uint16_t h)
+{
+    POINT_COLOR = UI_GRID;
+    LCD_DrawRectangle(x0, y0, (uint16_t)(x0 + w), (uint16_t)(y0 + h));
+    LCD_DrawLine(x0, (uint16_t)(y0 + h / 2u), (uint16_t)(x0 + w), (uint16_t)(y0 + h / 2u));
+    LCD_DrawLine(x0, (uint16_t)(y0 + h / 4u), (uint16_t)(x0 + w), (uint16_t)(y0 + h / 4u));
+    LCD_DrawLine(x0, (uint16_t)(y0 + (3u * h) / 4u), (uint16_t)(x0 + w), (uint16_t)(y0 + (3u * h) / 4u));
+    uint16_t lx = (x0 > 22u) ? (uint16_t)(x0 - 22u) : 0u;
+    draw_tiny_text(lx, (y0 > 5u) ? (uint16_t)(y0 - 5u) : y0, "+", UI_GRID, 2);
+    draw_tiny_text(lx, (uint16_t)(y0 + h / 2u - 5u), "0", UI_GRID, 2);
+    draw_tiny_text(lx, (uint16_t)(y0 + h - 11u), "-", UI_GRID, 2);
+}
+
 static uint16_t trace_y(uint32_t v, uint32_t maxv, uint16_t top, uint16_t h)
 {
     if (maxv == 0) maxv = 1;
@@ -495,6 +600,77 @@ static uint16_t centered_trace_y(uint32_t v, uint32_t *baseline, uint32_t *span,
     return (uint16_t)y;
 }
 
+static void draw_aux_spectrum_bars(uint16_t x0, uint16_t y0, uint16_t w, bool as_ok)
+{
+    uint16_t bx = (uint16_t)(x0 + w - 92u);
+    uint16_t by = (uint16_t)(y0 + 14u);
+    uint16_t bw = 78u;
+    uint16_t bh = 88u;
+    uint32_t vals[3];
+    vals[0] = spectrum_value(3u);              /* NIR 855 nm */
+    vals[1] = spectrum_value(SPEC_CLEAR_AVG);  /* clear / VIS average */
+    vals[2] = spectrum_value(SPEC_FD_AVG);     /* flicker-detect average */
+
+    uint32_t peak = 1;
+    for (uint8_t i = 0; i < 3; i++) if (vals[i] > peak) peak = vals[i];
+    if (peak > as_aux_bar_max) as_aux_bar_max = peak;
+    else as_aux_bar_max = ((as_aux_bar_max * 31u) + peak + 1u) / 32u;
+    if (as_aux_bar_max < 100u) as_aux_bar_max = 100u;
+
+    LCD_Fill(bx, by, (uint16_t)(bx + bw), (uint16_t)(by + bh), BLACK);
+    POINT_COLOR = UI_GRID;
+    LCD_DrawRectangle(bx, by, (uint16_t)(bx + bw), (uint16_t)(by + bh));
+    draw_tiny_text((uint16_t)(bx + 6u), (uint16_t)(by + 5u), "N C F", UI_GRID, 1);
+
+    for (uint8_t i = 0; i < 3; i++) {
+        uint16_t bar_x = (uint16_t)(bx + 12u + i * 22u);
+        uint16_t bar_top = (uint16_t)(by + 20u);
+        uint16_t bar_bot = (uint16_t)(by + bh - 13u);
+        uint16_t bar_h = (uint16_t)(bar_bot - bar_top);
+        uint16_t fill_h = (uint16_t)((vals[i] * bar_h) / as_aux_bar_max);
+        if (fill_h > bar_h) fill_h = bar_h;
+        uint16_t color = (i == 0) ? UI_RED : ((i == 1) ? UI_CYAN : UI_YELLOW);
+        LCD_Fill(bar_x, bar_top, (uint16_t)(bar_x + 10u), bar_bot, UI_PANEL);
+        if (as_ok && fill_h > 0) {
+            LCD_Fill(bar_x, (uint16_t)(bar_bot - fill_h), (uint16_t)(bar_x + 10u), bar_bot, color);
+        }
+    }
+}
+
+static void draw_tsl_channel_bars(bool tsl_ok)
+{
+    uint16_t w = 230u;
+    uint16_t h = 76u;
+    uint16_t x = (lcddev.width > (w + 28u)) ? (uint16_t)(lcddev.width - w - 28u) : 520u;
+    uint16_t y = 18u;
+    uint32_t vals[2] = {last_tsl0, last_tsl1};
+    uint32_t peak = (vals[0] > vals[1]) ? vals[0] : vals[1];
+    if (peak < 16u) peak = 16u;
+    if (peak > tsl_bar_max) tsl_bar_max = peak;
+    else tsl_bar_max = ((tsl_bar_max * 31u) + peak + 1u) / 32u;
+    if (tsl_bar_max < 64u) tsl_bar_max = 64u;
+
+    LCD_Fill(x, y, (uint16_t)(x + w), (uint16_t)(y + h), BLACK);
+    POINT_COLOR = UI_GRID;
+    LCD_DrawRectangle(x, y, (uint16_t)(x + w), (uint16_t)(y + h));
+    draw_tiny_text((uint16_t)(x + 8u), (uint16_t)(y + 6u), "TSL C0 C1", UI_GRID, 2);
+
+    for (uint8_t i = 0; i < 2; i++) {
+        uint16_t bar_x = (uint16_t)(x + 92u + i * 58u);
+        uint16_t bar_top = (uint16_t)(y + 22u);
+        uint16_t bar_bot = (uint16_t)(y + h - 11u);
+        uint16_t bar_h = (uint16_t)(bar_bot - bar_top);
+        uint16_t fill_h = (uint16_t)((vals[i] * bar_h) / tsl_bar_max);
+        if (fill_h > bar_h) fill_h = bar_h;
+        uint16_t color = (i == 0) ? UI_ORANGE : UI_RED;
+        LCD_Fill(bar_x, bar_top, (uint16_t)(bar_x + 30u), bar_bot, UI_PANEL);
+        if (tsl_ok && fill_h > 0) {
+            LCD_Fill(bar_x, (uint16_t)(bar_bot - fill_h), (uint16_t)(bar_x + 30u), bar_bot, color);
+        }
+        draw_tiny_text((uint16_t)(bar_x + 10u), (uint16_t)(bar_bot + 3u), (i == 0) ? "0" : "1", UI_GRID, 1);
+    }
+}
+
 static void draw_live(uint32_t t_ms, bool as_ok, bool tsl_ok)
 {
     uint16_t plot_y = 130;
@@ -504,50 +680,56 @@ static void draw_live(uint32_t t_ms, bool as_ok, bool tsl_ok)
     uint16_t left_w = (uint16_t)((lcddev.width - 120 - gap) / 2);
     uint16_t right_x = (uint16_t)(left_x + left_w + gap);
     uint16_t right_w = (uint16_t)(lcddev.width - right_x - 46);
-    uint8_t n = (uint8_t)(sizeof(spec_ch) / sizeof(spec_ch[0]));
+    uint8_t n_main = SPEC_MAIN_COUNT;
     (void)t_ms;
 
     draw_status_boxes(as_ok, tsl_ok);
+    draw_tsl_channel_bars(tsl_ok);
 
-    uint32_t as_sum = 0;
-    for (uint8_t i = 0; i < n; i++) as_sum += spectrum_value(spec_ch[i]);
     uint32_t visible = last_tsl_visible_norm;
     uint32_t full_norm = last_tsl0_norm;
     uint32_t diag = (!as_ok && !tsl_ok) ? ((seq & 0x20u) ? 18u : 65u) : 0u;
 
-    if (as_sum > as_trace_max) as_trace_max = as_sum;
+    uint32_t visible_peak = 1;
+    for (uint8_t i = 0; i < n_main; i++) {
+        uint16_t v = spectrum_value(spec_ch[i]);
+        if (v > visible_peak) visible_peak = v;
+    }
+    if (visible_peak > as_trace_max) as_trace_max = visible_peak;
     else if (as_trace_max > 100) as_trace_max -= (as_trace_max / 512u) + 1u;
 
-    uint16_t spec_y[sizeof(spec_ch)];
-    uint32_t spec_max = 1;
-    for (uint8_t i = 0; i < n; i++) {
-        uint16_t v = spectrum_value(spec_ch[i]);
-        if (v > spec_max) spec_max = v;
-    }
-    if (spec_max < 100) spec_max = 100;
+    uint16_t spec_y[SPEC_MAIN_COUNT];
+    uint32_t spec_max = (as_trace_max < 100u) ? 100u : as_trace_max;
 
-    for (uint8_t i = 0; i < n; i++) {
-        uint16_t x0 = (uint16_t)(left_x + 16 + ((uint32_t)i * (left_w - 32)) / (n - 1));
+    for (uint8_t i = 0; i < n_main; i++) {
+        uint16_t x0 = (uint16_t)(left_x + 16 + ((uint32_t)i * (left_w - 32)) / (n_main - 1u));
         spec_y[i] = trace_y(spectrum_value(spec_ch[i]), spec_max, plot_y, plot_h);
         if (spectrum_started && i > 0) {
-            uint16_t px0 = (uint16_t)(left_x + 16 + ((uint32_t)(i - 1) * (left_w - 32)) / (n - 1));
+            uint16_t px0 = (uint16_t)(left_x + 16 + ((uint32_t)(i - 1) * (left_w - 32)) / (n_main - 1u));
             POINT_COLOR = BLACK;
             LCD_DrawLine(px0, prev_spec_y[i - 1], x0, prev_spec_y[i]);
         }
     }
-    for (uint8_t i = 1; i < n; i++) {
-        uint16_t x0 = (uint16_t)(left_x + 16 + ((uint32_t)(i - 1) * (left_w - 32)) / (n - 1));
-        uint16_t x1 = (uint16_t)(left_x + 16 + ((uint32_t)i * (left_w - 32)) / (n - 1));
+    draw_spectrum_axes(left_x, plot_y, left_w, plot_h);
+    draw_aux_spectrum_bars(left_x, plot_y, left_w, as_ok);
+    for (uint8_t i = 1; i < n_main; i++) {
+        uint16_t x0 = (uint16_t)(left_x + 16 + ((uint32_t)(i - 1) * (left_w - 32)) / (n_main - 1u));
+        uint16_t x1 = (uint16_t)(left_x + 16 + ((uint32_t)i * (left_w - 32)) / (n_main - 1u));
         POINT_COLOR = as_ok ? UI_CYAN : UI_RED;
         LCD_DrawLine(x0, spec_y[i - 1], x1, spec_y[i]);
     }
-    memcpy(prev_spec_y, spec_y, sizeof(prev_spec_y));
+    for (uint8_t i = 0; i < n_main; i++) {
+        uint16_t x0 = (uint16_t)(left_x + 16 + ((uint32_t)i * (left_w - 32)) / (n_main - 1u));
+        LCD_Fill((uint16_t)(x0 - 2u), (uint16_t)(spec_y[i] - 2u), (uint16_t)(x0 + 2u), (uint16_t)(spec_y[i] + 2u), as_ok ? UI_YELLOW : UI_RED);
+    }
+    memcpy(prev_spec_y, spec_y, sizeof(spec_y));
     spectrum_started = true;
 
     uint16_t x = (uint16_t)(right_x + intensity_x);
     uint16_t erase_x1 = (uint16_t)(x + 3);
     if (erase_x1 > (uint16_t)(right_x + right_w)) erase_x1 = (uint16_t)(right_x + right_w);
     LCD_Fill(x, (uint16_t)(plot_y + 1), erase_x1, (uint16_t)(plot_y + plot_h - 1), BLACK);
+    draw_intensity_axes(right_x, plot_y, right_w, plot_h);
 
     uint16_t tsl_y = centered_trace_y(visible, &tsl_visible_baseline, &tsl_visible_span, plot_y, plot_h);
     uint16_t full_y = centered_trace_y(full_norm, &tsl_full_baseline, &tsl_full_span, plot_y, plot_h);
