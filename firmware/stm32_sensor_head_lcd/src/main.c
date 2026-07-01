@@ -81,9 +81,9 @@ static uint32_t tsl_full_span = 16;
 static uint16_t prev_spec_y[SPEC_MAIN_COUNT];
 static bool spectrum_started = false;
 static bool scale_fixed_mode = false;
-static uint8_t tsl_gain_index = 1;
-static uint8_t tsl_gain_code = 0x10;
-static uint8_t as_gain_code = 5;
+static uint8_t tsl_gain_index = 3;
+static uint8_t tsl_gain_code = 0x30;
+static uint8_t as_gain_code = 10;
 static uint32_t as_sample_count = 0;
 static uint32_t tsl_sample_count = 0;
 
@@ -109,12 +109,21 @@ volatile uint32_t capture_log_record_size = sizeof(CaptureRecord);
 volatile uint32_t capture_log_write = 0;
 volatile CaptureRecord capture_log[CAPTURE_LOG_CAPACITY];
 
+static void capture_log_clean_dcache(const void *addr, uint32_t len)
+{
+    uintptr_t start = ((uintptr_t)addr) & ~(uintptr_t)31u;
+    uintptr_t end = (((uintptr_t)addr) + len + 31u) & ~(uintptr_t)31u;
+    SCB_CleanDCache_by_Addr((uint32_t *)start, (int32_t)(end - start));
+}
+
 static void capture_log_init_metadata(void)
 {
     capture_log_magic = CAPTURE_LOG_MAGIC;
     capture_log_capacity = CAPTURE_LOG_CAPACITY;
     capture_log_record_size = sizeof(CaptureRecord);
     capture_log_write = 0;
+    capture_log_clean_dcache((const void *)&capture_log_magic, 16u);
+    capture_log_clean_dcache((const void *)&capture_log_write, sizeof(capture_log_write));
 }
 
 void SysTick_Handler(void)
@@ -819,6 +828,8 @@ static void capture_log_sample(uint32_t t_ms, bool as_ok, bool tsl_ok)
     r->reserved = 0;
     for (uint8_t i = 0; i < 18u; i++) r->ch[i] = last_as[i];
     capture_log_write++;
+    capture_log_clean_dcache(r, sizeof(*r));
+    capture_log_clean_dcache((const void *)&capture_log_write, sizeof(capture_log_write));
 }
 
 static void print_csv_header(void)
