@@ -13,3 +13,4 @@ backups/
 tools/downloads/
 tools/xpack/
 tools/xpack-*/
+.vendor_stage/
