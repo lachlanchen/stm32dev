@@ -72,7 +72,7 @@ static uint8_t i2c_mode = 0;
 
 static void bb_delay(void)
 {
-    delay_us(5);
+    delay_us(20);
 }
 
 static void bb_scl(bool high)
@@ -489,6 +489,7 @@ int main(void)
     uart_init(115200);
     SDRAM_Init();
     LCD_Init();
+    LCD_Display_Dir(1);
 
     draw_startup();
     i2c_select_working_bus();

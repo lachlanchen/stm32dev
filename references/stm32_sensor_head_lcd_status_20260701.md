@@ -132,3 +132,30 @@ seq        = incrementing
 ```
 
 Conclusion: the STM32 firmware and LCD visualization work, but the sensors are still not ACKing on the tested I2C pin modes. Correct wiring should make the status boxes and traces turn live without reflashing.
+
+## 2026-07-01 Landscape and Slow-I2C Update
+
+The panel was observed drawing only on the left side and rotated counterclockwise. The firmware now forces landscape mode after LCD initialization:
+
+```c
+LCD_Init();
+LCD_Display_Dir(1);
+```
+
+The bit-banged I2C delay was also slowed from `5 us` to `20 us` to help with weak pullups or long jumpers.
+
+Live SWD detection after this update:
+
+```text
+SCL/SDA pins = PB8/PB9
+i2c_mode    = 0
+ok_as7343   = 0
+ok_tsl      = 0
+last_as[]   = all zero
+last_tsl0   = 0
+last_tsl1   = 0
+seq         = incrementing
+GPIOB IDR   = 0x000003f0
+```
+
+`GPIOB IDR = 0x000003f0` means PB8 and PB9 are electrically high/released, so the bus is not stuck low. The remaining failure is no ACK from either sensor. If the user confirms the jumpers are on PB8/PB9, the next likely causes are sensor VCC/GND, wrong physical header row, sensor board not powered, missing common ground, or address/module mismatch.
