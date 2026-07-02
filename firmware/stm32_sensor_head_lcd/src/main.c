@@ -39,6 +39,7 @@
 #define CAPTURE_LOG_CAPACITY 2048u
 
 #define LAMP_PWM_TOP         65535u
+#define LAMP_PWM_PSC         15u
 #define LAMP_PWM_TEST_DUTY   52428u
 #define LAMP_TEST_ON_MS      3000u
 #define LAMP_TEST_GAP_MS     800u
@@ -331,7 +332,12 @@ static void lamp_pwm_init(void)
     HAL_GPIO_Init(GPIOA, &gpio);
 
     TIM2->CR1 = 0;
-    TIM2->PSC = 2u;
+    /*
+     * YYNMOS-1 optocoupled MOS PWM module is sold with low PWM-frequency
+     * limits; the user's module label says <=500 Hz. Keep TIM2 safely below
+     * that limit while preserving 16-bit duty steps.
+     */
+    TIM2->PSC = LAMP_PWM_PSC;
     TIM2->ARR = LAMP_PWM_TOP;
     TIM2->CCR1 = 0;
     TIM2->CCR2 = 0;

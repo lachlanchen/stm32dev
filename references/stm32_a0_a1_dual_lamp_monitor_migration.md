@@ -130,6 +130,20 @@ The STM32 LCD GUI firmware keeps running; the plot layout is not changed by the 
 ```
 
 - The short test uses a fixed safe test duty and ends with both PWM outputs at zero.
+- The YYNMOS-1 MOS/PWM module should be driven at a low PWM carrier. The photographed seller spec says:
+
+```text
+model: YYNMOS-1
+input signal: 3-5 V
+load supply: 3.7-27 VDC
+drive current: minimum 2 mA
+output current: rated 10 A
+frequency: within 500 Hz
+```
+
+The STM32 firmware therefore uses TIM2 with a large prescaler and 16-bit top. This preserves smooth 16-bit duty control while keeping the carrier below the module's 500 Hz limit.
+
+If the MOS still only flashes or fails to stay on, check the actual STM32 logic-high voltage. OpenOCD currently reports target voltage around `2.0 V`, while the MOS input label says `3-5 V`. If PA0/PA1 high level is really near 2 V, code cannot fix that; the input needs a proper 3.3 V logic level or a small level/driver stage.
 
 ## 2026-07-02 verification
 
@@ -173,3 +187,15 @@ Final readback:
 CCR1 = 0
 CCR2 = 0
 ```
+
+## 2026-07-02 YYNMOS-1 correction
+
+The first STM32 PWM setup was too close to or above the YYNMOS-1 module frequency limit. The firmware was corrected to use a slower TIM2 PWM carrier:
+
+```text
+TIM2 ARR = 65535
+TIM2 PSC = 15
+CCR1/CCR2 = 0 ... 65535
+```
+
+This is intended to prevent optocoupler/MOS-board flicker caused by excessive PWM input frequency.
