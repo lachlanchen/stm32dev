@@ -12,6 +12,8 @@
 #define AS7343_ADDR          0x39u
 #define TSL2591_ADDR         0x29u
 #define TSL2591_CMD          0xA0u
+#define INA219_LAMP2_ADDR    0x40u
+#define INA219_LAMP1_ADDR    0x41u
 
 #define AS_REG_CFG0          0xBFu
 #define AS_REG_ENABLE        0x80u
@@ -28,12 +30,19 @@
 #define AS_FSR_FAST          ((uint32_t)(AS_ATIME_FAST + 1u) * (uint32_t)(AS_ASTEP_FAST + 1u))
 #define AS_PERIOD_MS         12u
 #define TSL_PERIOD_MS        100u
+#define MONITOR_PERIOD_MS    100u
 #define DRAW_PERIOD_MS       20u
 #define AS_FIXED_VISIBLE_MAX AS_FSR_FAST
 #define AS_FIXED_AUX_MAX     AS_FSR_FAST
 #define TSL_FIXED_RAW_MAX    65535u
 #define CAPTURE_LOG_MAGIC    0x53504C47u
 #define CAPTURE_LOG_CAPACITY 2048u
+
+#define LAMP_PWM_TOP         65535u
+#define LAMP_PWM_TEST_DUTY   52428u
+#define LAMP_TEST_ON_MS      3000u
+#define LAMP_TEST_GAP_MS     800u
+#define INA219_SHUNT_MOHM    100u
 
 #define UI_BG                0x0841u
 #define UI_PANEL             0x18E3u
@@ -50,9 +59,21 @@ I2C_HandleTypeDef hi2c1;
 
 static bool ok_tsl = false;
 static bool ok_as7343 = false;
+static bool ok_monitor1 = false;
+static bool ok_monitor2 = false;
 static uint16_t last_as[18];
 static uint16_t last_tsl0 = 0;
 static uint16_t last_tsl1 = 0;
+static uint16_t last_bus1_mV = 0;
+static uint16_t last_bus2_mV = 0;
+static uint16_t last_current1_mA = 0;
+static uint16_t last_current2_mA = 0;
+static uint32_t last_power1_mW = 0;
+static uint32_t last_power2_mW = 0;
+static uint16_t lamp_pwm1 = 0;
+static uint16_t lamp_pwm2 = 0;
+static uint8_t lamp_test_stage = 0;
+static uint32_t lamp_test_stage_start = 0;
 static uint32_t last_tsl0_norm = 0;
 static uint32_t last_tsl_visible_norm = 0;
 static uint8_t last_status2 = 0;
@@ -275,6 +296,124 @@ static bool i2c_write16_le(uint8_t addr, uint8_t reg, uint16_t value)
     ok = bb_write_byte((uint8_t)(value >> 8)) && ok;
     bb_stop();
     return ok;
+}
+
+static bool i2c_write16_be(uint8_t addr, uint8_t reg, uint16_t value)
+{
+    bb_start();
+    bool ok = bb_write_byte((uint8_t)(addr << 1));
+    ok = bb_write_byte(reg) && ok;
+    ok = bb_write_byte((uint8_t)(value >> 8)) && ok;
+    ok = bb_write_byte((uint8_t)(value & 0xFFu)) && ok;
+    bb_stop();
+    return ok;
+}
+
+static bool i2c_read16_be(uint8_t addr, uint8_t reg, uint16_t *value)
+{
+    uint8_t raw[2];
+    if (!i2c_read_bytes(addr, reg, raw, 2)) return false;
+    *value = ((uint16_t)raw[0] << 8) | raw[1];
+    return true;
+}
+
+static void lamp_pwm_init(void)
+{
+    __HAL_RCC_GPIOA_CLK_ENABLE();
+    __HAL_RCC_TIM2_CLK_ENABLE();
+
+    GPIO_InitTypeDef gpio = {0};
+    gpio.Pin = GPIO_PIN_0 | GPIO_PIN_1;
+    gpio.Mode = GPIO_MODE_AF_PP;
+    gpio.Pull = GPIO_PULLDOWN;
+    gpio.Speed = GPIO_SPEED_FREQ_HIGH;
+    gpio.Alternate = GPIO_AF1_TIM2;
+    HAL_GPIO_Init(GPIOA, &gpio);
+
+    TIM2->CR1 = 0;
+    TIM2->PSC = 2u;
+    TIM2->ARR = LAMP_PWM_TOP;
+    TIM2->CCR1 = 0;
+    TIM2->CCR2 = 0;
+    TIM2->CCMR1 = (6u << 4) | TIM_CCMR1_OC1PE | (6u << 12) | TIM_CCMR1_OC2PE;
+    TIM2->CCER = TIM_CCER_CC1E | TIM_CCER_CC2E;
+    TIM2->EGR = TIM_EGR_UG;
+    TIM2->CR1 = TIM_CR1_ARPE | TIM_CR1_CEN;
+    lamp_pwm1 = 0;
+    lamp_pwm2 = 0;
+}
+
+static void lamp_pwm_set(uint16_t duty1, uint16_t duty2)
+{
+    lamp_pwm1 = duty1;
+    lamp_pwm2 = duty2;
+    TIM2->CCR1 = duty1;
+    TIM2->CCR2 = duty2;
+}
+
+static void lamp_test_start(uint32_t now)
+{
+    lamp_test_stage = 1;
+    lamp_test_stage_start = now;
+    lamp_pwm_set(LAMP_PWM_TEST_DUTY, 0);
+    printf("# lamp_test=start PA0_L1=%u PA1_L2=%u\r\n", LAMP_PWM_TEST_DUTY, LAMP_PWM_TEST_DUTY);
+}
+
+static void lamp_all_off(void)
+{
+    lamp_test_stage = 0;
+    lamp_pwm_set(0, 0);
+    printf("# lamp=off\r\n");
+}
+
+static void lamp_test_update(uint32_t now)
+{
+    uint32_t elapsed = now - lamp_test_stage_start;
+    if (lamp_test_stage == 0) return;
+    if (lamp_test_stage == 1 && elapsed >= LAMP_TEST_ON_MS) {
+        lamp_test_stage = 2;
+        lamp_test_stage_start = now;
+        lamp_pwm_set(0, 0);
+        printf("# lamp_test=gap_after_lamp1\r\n");
+    } else if (lamp_test_stage == 2 && elapsed >= LAMP_TEST_GAP_MS) {
+        lamp_test_stage = 3;
+        lamp_test_stage_start = now;
+        lamp_pwm_set(0, LAMP_PWM_TEST_DUTY);
+        printf("# lamp_test=lamp2_on\r\n");
+    } else if (lamp_test_stage == 3 && elapsed >= LAMP_TEST_ON_MS) {
+        lamp_test_stage = 4;
+        lamp_test_stage_start = now;
+        lamp_pwm_set(0, 0);
+        printf("# lamp_test=done_off\r\n");
+    } else if (lamp_test_stage == 4 && elapsed >= LAMP_TEST_GAP_MS) {
+        lamp_all_off();
+    }
+}
+
+static bool ina219_configure(uint8_t addr)
+{
+    return i2c_write16_be(addr, 0x00u, 0x3FFFu);
+}
+
+static bool ina219_read(uint8_t addr, uint16_t *bus_mV, uint16_t *current_mA, uint32_t *power_mW)
+{
+    uint16_t raw_shunt_u = 0;
+    uint16_t raw_bus = 0;
+    if (!i2c_read16_be(addr, 0x01u, &raw_shunt_u)) return false;
+    if (!i2c_read16_be(addr, 0x02u, &raw_bus)) return false;
+
+    int16_t raw_shunt = (int16_t)raw_shunt_u;
+    int32_t shunt_uV = (int32_t)raw_shunt * 10;
+    if (shunt_uV < 0) shunt_uV = -shunt_uV;
+
+    uint32_t ma = (uint32_t)shunt_uV / INA219_SHUNT_MOHM;
+    uint32_t mv = ((uint32_t)(raw_bus >> 3) * 4u);
+    if (ma > 5000u || mv > 32000u) return false;
+
+    *bus_mV = (uint16_t)mv;
+    *current_mA = (uint16_t)ma;
+    *power_mW = (mv * ma) / 1000u;
+    return true;
 }
 
 static bool as_set_bank(bool bank1)
@@ -511,13 +650,16 @@ static const char *tiny_pattern(char c)
     case 'H': return "101101111101101";
     case 'I': return "111010010010111";
     case 'L': return "100100100100111";
+    case 'M': return "101111111101101";
     case 'N': return "101111111111101";
     case 'O': return "111101101101111";
+    case 'P': return "110101110100100";
     case 'R': return "110101110101101";
     case 'S': return "111100111001111";
     case 'T': return "111010010010010";
     case 'U': return "101101101101111";
     case 'V': return "101101101101010";
+    case 'W': return "101101111111101";
     case 'X': return "101101010101101";
     case '+': return "000010111010000";
     case '-': return "000000111000000";
@@ -707,6 +849,32 @@ static void draw_tsl_channel_bars(bool tsl_ok)
     }
 }
 
+static void draw_power_panel(void)
+{
+    char line[48];
+    uint16_t x0 = 36u;
+    uint16_t y0 = 500u;
+    uint16_t x1 = (uint16_t)(lcddev.width - 36u);
+    uint16_t y1 = 562u;
+    uint32_t total_mW = last_power1_mW + last_power2_mW;
+
+    LCD_Fill(x0, y0, x1, y1, UI_PANEL);
+    POINT_COLOR = UI_GRID;
+    LCD_DrawRectangle(x0, y0, x1, y1);
+
+    snprintf(line, sizeof(line), "PWM A0 %u A1 %u", lamp_pwm1, lamp_pwm2);
+    draw_tiny_text((uint16_t)(x0 + 10u), (uint16_t)(y0 + 8u), line, UI_CYAN, 2);
+
+    snprintf(line, sizeof(line), "I1 %uMA P1 %luMW", last_current1_mA, (unsigned long)last_power1_mW);
+    draw_tiny_text((uint16_t)(x0 + 10u), (uint16_t)(y0 + 30u), line, ok_monitor1 ? UI_ORANGE : UI_RED, 2);
+
+    snprintf(line, sizeof(line), "I2 %uMA P2 %luMW", last_current2_mA, (unsigned long)last_power2_mW);
+    draw_tiny_text((uint16_t)(x0 + 330u), (uint16_t)(y0 + 30u), line, ok_monitor2 ? UI_GREEN : UI_RED, 2);
+
+    snprintf(line, sizeof(line), "PT %luMW", (unsigned long)total_mW);
+    draw_tiny_text((uint16_t)(x0 + 650u), (uint16_t)(y0 + 30u), line, UI_YELLOW, 2);
+}
+
 static void draw_live(uint32_t t_ms, bool as_ok, bool tsl_ok)
 {
     uint16_t plot_y = 130;
@@ -721,6 +889,7 @@ static void draw_live(uint32_t t_ms, bool as_ok, bool tsl_ok)
 
     draw_status_boxes(as_ok, tsl_ok);
     draw_tsl_channel_bars(tsl_ok);
+    draw_power_panel();
 
     uint32_t visible = last_tsl_visible_norm;
     uint32_t full_norm = last_tsl0_norm;
@@ -835,21 +1004,27 @@ static void capture_log_sample(uint32_t t_ms, bool as_ok, bool tsl_ok)
 static void print_csv_header(void)
 {
     printf("# STM32H743 sensor head\r\n");
-    printf("# AS7343 addr=0x39 TSL2591 addr=0x29 I2C1 PB8/PB9\r\n");
-    printf("# serial command: s toggles AUTO_DYNAMIC / FIXED_RAW display scale\r\n");
+    printf("# AS7343 addr=0x39 TSL2591 addr=0x29 INA219=0x40/0x41 I2C PB8/PB9\r\n");
+    printf("# PA0/A0=lamp1 PWM TIM2_CH1 PA1/A1=lamp2 PWM TIM2_CH2\r\n");
+    printf("# serial commands: s scale, T one-shot lamp test, X/0 all off\r\n");
     printf("# sensor gain is fixed; firmware auto-gain is disabled\r\n");
-    printf("t_ms,seq,ok_tsl,tsl_ch0,tsl_ch1,tsl_visible,tsl_gain,tsl_full_norm,tsl_visible_norm,tsl_samples,ok_as7343,status2,as_gain,as_samples,ch0,ch1,ch2,ch3,ch4,ch5,ch6,ch7,ch8,ch9,ch10,ch11,ch12,ch13,ch14,ch15,ch16,ch17,sum_display\r\n");
+    printf("t_ms,seq,pwm1,pwm2,lamp_stage,ok_mon1,bus1_mV,current1_mA,power1_mW,ok_mon2,bus2_mV,current2_mA,power2_mW,total_mW,ok_tsl,tsl_ch0,tsl_ch1,tsl_visible,tsl_gain,tsl_full_norm,tsl_visible_norm,tsl_samples,ok_as7343,status2,as_gain,as_samples,ch0,ch1,ch2,ch3,ch4,ch5,ch6,ch7,ch8,ch9,ch10,ch11,ch12,ch13,ch14,ch15,ch16,ch17,sum_display\r\n");
 }
 
 static bool poll_serial_commands(void)
 {
     bool changed = false;
     uint8_t c = 0;
+    uint32_t now = HAL_GetTick();
     while (HAL_UART_Receive(&UART1_Handler, &c, 1, 0) == HAL_OK) {
         if (c == 's' || c == 'S') {
             scale_fixed_mode = !scale_fixed_mode;
             changed = true;
             printf("# scale_mode=%s\r\n", scale_fixed_mode ? "FIXED_RAW" : "AUTO_DYNAMIC");
+        } else if (c == 't' || c == 'T') {
+            lamp_test_start(now);
+        } else if (c == 'x' || c == 'X' || c == '0') {
+            lamp_all_off();
         }
     }
     return changed;
@@ -860,9 +1035,21 @@ static void print_csv(uint32_t t_ms, bool as_ok, bool tsl_ok)
     uint16_t visible = (last_tsl0 > last_tsl1) ? (uint16_t)(last_tsl0 - last_tsl1) : 0;
     uint32_t sum = 0;
     for (uint8_t i = 0; i < sizeof(spec_ch); i++) sum += spectrum_value(spec_ch[i]);
-    printf("%lu,%lu,%u,%u,%u,%u,%u,%lu,%lu,%lu,%u,%u,%u,%lu",
+    printf("%lu,%lu,%u,%u,%u,%u,%u,%u,%lu,%u,%u,%u,%lu,%lu,%u,%u,%u,%u,%u,%lu,%lu,%lu,%u,%u,%u,%lu",
            (unsigned long)t_ms,
            (unsigned long)seq,
+           lamp_pwm1,
+           lamp_pwm2,
+           lamp_test_stage,
+           ok_monitor1 ? 1 : 0,
+           last_bus1_mV,
+           last_current1_mA,
+           (unsigned long)last_power1_mW,
+           ok_monitor2 ? 1 : 0,
+           last_bus2_mV,
+           last_current2_mA,
+           (unsigned long)last_power2_mW,
+           (unsigned long)(last_power1_mW + last_power2_mW),
            tsl_ok ? 1 : 0,
            last_tsl0,
            last_tsl1,
@@ -885,6 +1072,7 @@ int main(void)
     uint32_t last_probe = 0;
     uint32_t last_as_read = 0;
     uint32_t last_tsl_read = 0;
+    uint32_t last_monitor_read = 0;
     uint32_t last_draw = 0;
     bool as_ok_live = false;
     bool tsl_ok_live = false;
@@ -894,6 +1082,7 @@ int main(void)
     Stm32_Clock_Init(160, 5, 2, 4); /* 400 MHz */
     delay_init(400);
     uart_init(115200);
+    lamp_pwm_init();
     capture_log_init_metadata();
     SDRAM_Init();
     LCD_Init();
@@ -905,23 +1094,32 @@ int main(void)
 
     ok_tsl = i2c_present(TSL2591_ADDR) && tsl2591_configure();
     ok_as7343 = i2c_present(AS7343_ADDR) && as7343_configure();
+    ok_monitor1 = i2c_present(INA219_LAMP1_ADDR) && ina219_configure(INA219_LAMP1_ADDR);
+    ok_monitor2 = i2c_present(INA219_LAMP2_ADDR) && ina219_configure(INA219_LAMP2_ADDR);
 
     draw_frame(scan);
     print_csv_header();
     printf("# %s mode=%u\\r\\n", scan, i2c_mode);
-    printf("# tsl2591=%s as7343=%s\r\n", ok_tsl ? "yes" : "no", ok_as7343 ? "yes" : "no");
+    printf("# tsl2591=%s as7343=%s monitor1_0x41=%s monitor2_0x40=%s\r\n",
+           ok_tsl ? "yes" : "no",
+           ok_as7343 ? "yes" : "no",
+           ok_monitor1 ? "yes" : "no",
+           ok_monitor2 ? "yes" : "no");
 
     while (1) {
         uint32_t now = HAL_GetTick();
+        lamp_test_update(now);
         if (poll_serial_commands()) {
             draw_frame(scan);
         }
 
-        if ((now - last_probe) > 1000u && (!ok_tsl || !ok_as7343)) {
+        if ((now - last_probe) > 1000u && (!ok_tsl || !ok_as7343 || !ok_monitor1 || !ok_monitor2)) {
             i2c_select_working_bus();
             scan_i2c(scan, sizeof(scan));
             if (!ok_tsl) ok_tsl = i2c_present(TSL2591_ADDR) && tsl2591_configure();
             if (!ok_as7343) ok_as7343 = i2c_present(AS7343_ADDR) && as7343_configure();
+            if (!ok_monitor1) ok_monitor1 = i2c_present(INA219_LAMP1_ADDR) && ina219_configure(INA219_LAMP1_ADDR);
+            if (!ok_monitor2) ok_monitor2 = i2c_present(INA219_LAMP2_ADDR) && ina219_configure(INA219_LAMP2_ADDR);
             last_probe = now;
         }
 
@@ -935,6 +1133,12 @@ int main(void)
             tsl_ok_live = tsl2591_read(&last_tsl0, &last_tsl1);
             if (tsl_ok_live) tsl_sample_count++;
             last_tsl_read = now;
+        }
+
+        if ((now - last_monitor_read) >= MONITOR_PERIOD_MS) {
+            ok_monitor1 = ina219_read(INA219_LAMP1_ADDR, &last_bus1_mV, &last_current1_mA, &last_power1_mW);
+            ok_monitor2 = ina219_read(INA219_LAMP2_ADDR, &last_bus2_mV, &last_current2_mA, &last_power2_mW);
+            last_monitor_read = now;
         }
 
         if ((now - last_draw) >= DRAW_PERIOD_MS) {
