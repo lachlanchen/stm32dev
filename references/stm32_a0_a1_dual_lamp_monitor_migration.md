@@ -80,6 +80,45 @@ lamp2 current and power
 total electrical power
 ```
 
+## PC-side lamp command tool
+
+Because the ST-Link VCP serial path did not produce reliable command input in the current setup, the repo now includes an OpenOCD command tool:
+
+```powershell
+python scripts\stm32_lamp_control.py lamp1
+python scripts\stm32_lamp_control.py lamp2
+python scripts\stm32_lamp_control.py both
+python scripts\stm32_lamp_control.py off
+python scripts\stm32_lamp_control.py status
+```
+
+Default behavior is intentionally safe:
+
+```text
+lamp1/lamp2/both -> pulse for 3 seconds -> both off
+off              -> immediate both off
+status           -> read TIM2 CCR1/CCR2
+```
+
+Examples:
+
+```powershell
+python scripts\stm32_lamp_control.py lamp1 --seconds 3
+python scripts\stm32_lamp_control.py lamp2 --seconds 1 --duty 30000
+python scripts\stm32_lamp_control.py both --seconds 0.5 --duty 20000
+python scripts\stm32_lamp_control.py lamp1 --hold --duty 15000
+python scripts\stm32_lamp_control.py off
+```
+
+The command tool writes only TIM2 compare registers:
+
+```text
+TIM2 CCR1 -> PA0/A0 -> lamp1
+TIM2 CCR2 -> PA1/A1 -> lamp2
+```
+
+The STM32 LCD GUI firmware keeps running; the plot layout is not changed by the command tool.
+
 ## Important notes
 
 - PA9/A9 and PA10/A10 are reserved by the current firmware for USART1 and should not be used for lamp PWM.
@@ -115,3 +154,22 @@ Monitor 0x40 detected: no
 ```
 
 So the shared I2C bus works for AS7343 and TSL2591, but the monitor HAT was not detected at `0x40` or `0x41` during this verification. Check monitor HAT `3V3`, `GND`, `SDA=PB9`, and `SCL=PB8` before relying on current/power display.
+
+## 2026-07-02 lamp1 pulse verification
+
+Lamp1 was pulsed through OpenOCD for 3 seconds:
+
+```text
+TIM2 CCR1 = 52428
+TIM2 CCR2 = 0
+sleep 3000 ms
+TIM2 CCR1 = 0
+TIM2 CCR2 = 0
+```
+
+Final readback:
+
+```text
+CCR1 = 0
+CCR2 = 0
+```
