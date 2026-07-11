@@ -38,9 +38,9 @@
 #define CAPTURE_LOG_MAGIC    0x53504C47u
 #define CAPTURE_LOG_CAPACITY 2048u
 
-#define LAMP_PWM_TOP         65535u
-#define LAMP_PWM_PSC         15u
-#define LAMP_PWM_TEST_DUTY   52428u
+#define LAMP_PWM_TOP         255u
+#define LAMP_PWM_PSC         3199u
+#define LAMP_PWM_TEST_DUTY   255u
 #define LAMP_TEST_ON_MS      3000u
 #define LAMP_TEST_GAP_MS     800u
 #define INA219_SHUNT_MOHM    100u
@@ -332,11 +332,13 @@ static void lamp_pwm_init(void)
     HAL_GPIO_Init(GPIOA, &gpio);
 
     TIM2->CR1 = 0;
-    /*
-     * YYNMOS-1 optocoupled MOS PWM module is sold with low PWM-frequency
-     * limits; the user's module label says <=500 Hz. Keep TIM2 safely below
-     * that limit while preserving 16-bit duty steps.
-     */
+  /*
+   * YYNMOS-1 optocoupled MOS PWM module is sold with low PWM-frequency
+   * limits; the user's module label says <=500 Hz. Use Arduino-style
+   * 8-bit duty steps (0..255) and keep TIM2 at or below that range.
+   * With a 400 MHz TIM2 clock this is about 488 Hz; with a 200 MHz
+   * TIM2 clock this is about 244 Hz.
+   */
     TIM2->PSC = LAMP_PWM_PSC;
     TIM2->ARR = LAMP_PWM_TOP;
     TIM2->CCR1 = 0;
