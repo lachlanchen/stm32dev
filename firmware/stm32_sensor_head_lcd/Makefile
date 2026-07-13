@@ -1,5 +1,15 @@
+APP ?= sensor
+
+ifeq ($(APP),nand_diag)
+PROJECT := stm32_nand_diag_lcd
+BUILD_DIR := build_nand_diag
+MAIN_SRC := src/nand_diag_main.c
+else
 PROJECT := stm32_sensor_head_lcd
 BUILD_DIR := build
+MAIN_SRC := src/main.c
+endif
+
 VENDOR := vendor
 SRC := src
 
@@ -27,7 +37,7 @@ LDFLAGS := $(CPU_FLAGS) -T$(SRC)/stm32h743_flash.ld -nostartfiles -Wl,--gc-secti
 
 SRCS := \
   $(SRC)/startup_stm32h743xx_gcc.s \
-  $(SRC)/main.c \
+  $(MAIN_SRC) \
   $(SRC)/delay.c \
   $(SRC)/usart.c \
   $(VENDOR)/USER/system_stm32h7xx.c \
@@ -56,7 +66,7 @@ SRCS := \
 
 OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(filter %.c,$(SRCS))) $(patsubst %.s,$(BUILD_DIR)/%.o,$(filter %.s,$(SRCS)))
 
-.PHONY: all clean flash
+.PHONY: all clean flash nand-diag flash-nand-diag clean-nand-diag
 
 all: $(BUILD_DIR)/$(PROJECT).elf $(BUILD_DIR)/$(PROJECT).bin
 	$(SIZE) $(BUILD_DIR)/$(PROJECT).elf
@@ -77,6 +87,15 @@ $(BUILD_DIR)/%.o: %.s
 
 flash: all
 	openocd -f interface/stlink.cfg -f target/stm32h7x.cfg -c "adapter speed 1000" -c "program $(BUILD_DIR)/$(PROJECT).elf verify reset exit"
+
+nand-diag:
+	$(MAKE) APP=nand_diag all
+
+flash-nand-diag:
+	$(MAKE) APP=nand_diag flash
+
+clean-nand-diag:
+	$(MAKE) APP=nand_diag clean
 
 clean:
 	powershell -NoProfile -Command "Remove-Item -Recurse -Force '$(BUILD_DIR)' -ErrorAction SilentlyContinue"
