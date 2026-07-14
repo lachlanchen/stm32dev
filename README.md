@@ -104,6 +104,9 @@ See the complete Chinese guide for the NAND pin map, read-only diagnostic GUI,
 board memory hierarchy, speed comparison, and OS/micro-ROS usage:
 [NAND diagnostic and board memory architecture](references/nand-diagnostic-memory-architecture-cn.md).
 
+The board's 8 MiB W25Q64 QSPI NOR is also hardware-verified. See the
+[read-only QSPI detection record](references/w25q64-qspi-detection-cn.md).
+
 The read-only NAND diagnostic boots in Chinese (`zh-CN`) and keeps a complete English fallback. Text is selected through stable translation IDs, while the compact 24 x 24 Chinese glyph set is embedded in firmware; no SD card or external font file is required.
 
 With ST-Link connected, switch the live display without rebuilding or resetting:

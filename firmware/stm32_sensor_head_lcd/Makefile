@@ -4,6 +4,10 @@ ifeq ($(APP),nand_diag)
 PROJECT := stm32_nand_diag_lcd
 BUILD_DIR := build_nand_diag
 APP_SRCS := src/nand_diag_main.c src/nand_diag_i18n.c
+else ifeq ($(APP),qspi_diag)
+PROJECT := stm32_qspi_diag
+BUILD_DIR := build_qspi_diag
+APP_SRCS := src/qspi_diag_main.c
 else
 PROJECT := stm32_sensor_head_lcd
 BUILD_DIR := build
@@ -56,6 +60,7 @@ SRCS := \
   $(VENDOR)/HALLIB/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_mdma.c \
   $(VENDOR)/HALLIB/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_pwr.c \
   $(VENDOR)/HALLIB/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_pwr_ex.c \
+  $(VENDOR)/HALLIB/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_qspi.c \
   $(VENDOR)/HALLIB/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_rcc.c \
   $(VENDOR)/HALLIB/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_rcc_ex.c \
   $(VENDOR)/HALLIB/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_sdram.c \
@@ -66,7 +71,7 @@ SRCS := \
 
 OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(filter %.c,$(SRCS))) $(patsubst %.s,$(BUILD_DIR)/%.o,$(filter %.s,$(SRCS)))
 
-.PHONY: all clean flash nand-diag flash-nand-diag clean-nand-diag
+.PHONY: all clean flash nand-diag flash-nand-diag clean-nand-diag qspi-diag flash-qspi-diag clean-qspi-diag
 
 all: $(BUILD_DIR)/$(PROJECT).elf $(BUILD_DIR)/$(PROJECT).bin
 	$(SIZE) $(BUILD_DIR)/$(PROJECT).elf
@@ -96,6 +101,15 @@ flash-nand-diag:
 
 clean-nand-diag:
 	$(MAKE) APP=nand_diag clean
+
+qspi-diag:
+	$(MAKE) APP=qspi_diag all
+
+flash-qspi-diag:
+	$(MAKE) APP=qspi_diag flash
+
+clean-qspi-diag:
+	$(MAKE) APP=qspi_diag clean
 
 clean:
 	powershell -NoProfile -Command "Remove-Item -Recurse -Force '$(BUILD_DIR)' -ErrorAction SilentlyContinue"

@@ -160,9 +160,9 @@ flowchart TD
 | 内部双 Bank Flash | 2 MiB，`0x08000000` | 是 | 启动向量、固件、常量、字体 |
 | ST System ROM | 芯片内部保留区 | 永久 | 厂商 Bootloader，用户不能改写 |
 | 外部 SDRAM W9825G6KH | 32 MiB，`0xC0000000` | 否 | LCD RGB565 帧缓冲及大数据缓冲 |
-| QSPI NOR W25Q64 | 8 MiB，原理图设计 | 是 | 可做资源/XIP/文件存储；当前装配和通信尚未验证 |
+| QSPI NOR W25Q64 | 8 MiB，JEDEC `EF 40 17` | 是 | 已实测装配并通过 64/64 稳定读取与 SFDP 检查 |
 | SLC NAND K9F2G08U0C | 256 MiB + OOB，FMC Bank 3 | 是 | 大容量原始存储；当前只读接口检查通过 |
-| SD 卡槽 | 容量由卡决定 | 是 | 可移除文件存储；需要 SD/FatFs 驱动 |
+| SD 卡槽 | 32 GB 卡已购买、尚未到货安装 | 是 | 可移除文件存储；确认插卡后再只读探测 SD/FatFs |
 
 当前链接脚本只直接管理内部 Flash、DTCM 和 AXI SRAM。外部 SDRAM由启动代码运行时初始化，NAND 由命令驱动访问，因此它们不会作为普通 C 堆内存自动出现。
 
@@ -199,4 +199,3 @@ STM32 内部 Flash
 - `D:\BaiduNetdiskDownload\极客STM32H743IIT6核心板资料\芯片手册\Samsung-K9F2G08U0C.pdf`
 - `D:\BaiduNetdiskDownload\极客STM32H743IIT6核心板资料\芯片手册\ST-STM32H743II.pdf`
 - `D:\BaiduNetdiskDownload\极客STM32H743IIT6核心板资料\芯片手册\Winbond-W9825G6KH.pdf`
-

@@ -63,6 +63,20 @@ Restore the normal sensor-head firmware at any time:
 make -C firmware/stm32_sensor_head_lcd flash
 ```
 
+## Read-only W25Q64 QSPI diagnostic
+
+`src/qspi_diag_main.c` is an independent, non-destructive W25Q64 detector. It
+reads JEDEC ID, status registers, SFDP, Unique ID, and four bytes at address 0;
+it contains no write-enable, program, erase, or status-write command.
+
+```powershell
+make -C firmware/stm32_sensor_head_lcd qspi-diag
+```
+
+The installed device passed as Winbond W25Q64 (`EF 40 17`) with 64/64 stable
+reads and valid SFDP. See
+[the Chinese QSPI detection record](../../references/w25q64-qspi-detection-cn.md).
+
 ### Diagnostic UI languages
 
 The NAND diagnostic uses a small key-based i18n layer. It starts in Simplified
