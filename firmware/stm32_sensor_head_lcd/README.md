@@ -28,6 +28,9 @@ The current AS7343 code uses register-level 18-channel auto-SMUX mode copied fro
 
 ## Read-only NAND solder diagnostic
 
+Detailed Chinese hardware, GUI, memory-map, performance, and OS/ROS usage guide:
+[NAND diagnostic and board memory architecture](../../references/nand-diagnostic-memory-architecture-cn.md).
+
 `src/nand_diag_main.c` is an independent diagnostic entry point for the
 Samsung `K9F2G08U0C-SIB0`. The normal `src/main.c` sensor application is not
 modified or linked into this image. The diagnostic forces lamp outputs
