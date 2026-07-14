@@ -8,9 +8,10 @@ This independent bare-metal image targets the newly detected Cortex-M3 board:
 - debugger: Telesky ST-Link/V2, USB `0483:3748`
 
 It controls two daisy-chained pixels. LED1 is the first device connected to
-`PA0`; LED2 receives LED1's `DO`. The image alternates once per second between
-`LED1=red, LED2=green` and `LED1=green, LED2=red`, with both pixels updating on
-the same latch edge. Intensity remains limited to `48/255` for bring-up.
+`PA0`; LED2 receives LED1's `DO`. Every three seconds, LED1 advances through
+`R, G, B, W, OFF`, while LED2 follows the shifted sequence `G, B, W, OFF, R`.
+Both pixels latch each new state together, and the five-state diagnostic repeats
+continuously. Intensity remains limited to `48/255`.
 
 ## Wiring
 

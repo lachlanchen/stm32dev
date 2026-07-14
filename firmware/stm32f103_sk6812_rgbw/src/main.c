@@ -145,6 +145,8 @@ int main(void)
     static const Pixel off   = {0u, 0u, 0u, 0u};
     static const Pixel red   = {TEST_LEVEL, 0u, 0u, 0u};
     static const Pixel green = {0u, TEST_LEVEL, 0u, 0u};
+    static const Pixel blue  = {0u, 0u, TEST_LEVEL, 0u};
+    static const Pixel white = {0u, 0u, 0u, TEST_LEVEL};
 
     clock_init_64mhz();
     pa0_init();
@@ -155,8 +157,14 @@ int main(void)
 
     for (;;) {
         show_two(red, green);
-        delay_ms(1000u);
-        show_two(green, red);
-        delay_ms(1000u);
+        delay_ms(3000u);
+        show_two(green, blue);
+        delay_ms(3000u);
+        show_two(blue, white);
+        delay_ms(3000u);
+        show_two(white, off);
+        delay_ms(3000u);
+        show_two(off, red);
+        delay_ms(3000u);
     }
 }
