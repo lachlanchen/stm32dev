@@ -8,6 +8,10 @@ else ifeq ($(APP),qspi_diag)
 PROJECT := stm32_qspi_diag
 BUILD_DIR := build_qspi_diag
 APP_SRCS := src/qspi_diag_main.c
+else ifeq ($(APP),sk6812)
+PROJECT := stm32_sk6812_rgbw
+BUILD_DIR := build_sk6812
+APP_SRCS := src/sk6812_rgbw_main.c
 else
 PROJECT := stm32_sensor_head_lcd
 BUILD_DIR := build
@@ -71,7 +75,7 @@ SRCS := \
 
 OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(filter %.c,$(SRCS))) $(patsubst %.s,$(BUILD_DIR)/%.o,$(filter %.s,$(SRCS)))
 
-.PHONY: all clean flash nand-diag flash-nand-diag clean-nand-diag qspi-diag flash-qspi-diag clean-qspi-diag
+.PHONY: all clean flash nand-diag flash-nand-diag clean-nand-diag qspi-diag flash-qspi-diag clean-qspi-diag sk6812 flash-sk6812 clean-sk6812
 
 all: $(BUILD_DIR)/$(PROJECT).elf $(BUILD_DIR)/$(PROJECT).bin
 	$(SIZE) $(BUILD_DIR)/$(PROJECT).elf
@@ -110,6 +114,15 @@ flash-qspi-diag:
 
 clean-qspi-diag:
 	$(MAKE) APP=qspi_diag clean
+
+sk6812:
+	$(MAKE) APP=sk6812 all
+
+flash-sk6812:
+	$(MAKE) APP=sk6812 flash
+
+clean-sk6812:
+	$(MAKE) APP=sk6812 clean
 
 clean:
 	powershell -NoProfile -Command "Remove-Item -Recurse -Force '$(BUILD_DIR)' -ErrorAction SilentlyContinue"

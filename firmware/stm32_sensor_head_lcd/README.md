@@ -95,3 +95,19 @@ adding translations with:
 ```powershell
 powershell -ExecutionPolicy Bypass -File firmware/stm32_sensor_head_lcd/tools/generate_nand_diag_cn_font.ps1
 ```
+
+## Independent SK6812RGBW two-pixel runner
+
+`src/sk6812_rgbw_main.c` is a separate image for a second STM32H743 board. It
+drives two daisy-chained SK6812RGBW pixels from `PA0/A0`; it does not replace or
+modify the TSL2591/AS7343 source in `src/main.c`.
+
+```powershell
+make -C firmware/stm32_sensor_head_lcd sk6812
+make -C firmware/stm32_sensor_head_lcd flash-sk6812
+```
+
+Restore the sensor-head image with `make -C firmware/stm32_sensor_head_lcd flash`.
+Use an external 5 V supply, common ground, a 5 V AHCT-level buffer, local
+decoupling, and connect first-pixel `DOUT` to second-pixel `DIN`. See the
+[Chinese wiring tutorial](../../publications/sk6812_rgbw_stm32_cn/sk6812_rgbw_stm32_cn.pdf).

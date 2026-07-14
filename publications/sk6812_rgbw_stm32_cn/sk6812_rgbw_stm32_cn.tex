@@ -1,0 +1,216 @@
+\documentclass[UTF8,11pt]{ctexart}
+\usepackage[a4paper,margin=18mm]{geometry}
+\usepackage{booktabs,tabularx,array,longtable}
+\usepackage{amsmath}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,calc,shapes.geometric}
+\usepackage{pdflscape}
+\usepackage{enumitem}
+\usepackage{listings}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true,linkcolor=blue!55!black,urlcolor=blue!65!black}
+\setlength{\emergencystretch}{3em}
+
+\definecolor{navy}{HTML}{17324D}
+\definecolor{sky}{HTML}{DDEFFC}
+\definecolor{mint}{HTML}{DDF4E7}
+\definecolor{warm}{HTML}{FFF0D5}
+\definecolor{wiredata}{HTML}{D97706}
+\definecolor{wirepower}{HTML}{C62828}
+\definecolor{wireground}{HTML}{1565C0}
+\definecolor{warning}{HTML}{B42318}
+
+\setlist{nosep,leftmargin=2em}
+\lstset{basicstyle=\ttfamily\small,frame=single,breaklines=true,
+  backgroundcolor=\color{black!3},columns=fullflexible}
+
+\title{STM32H743 驱动两颗 SK6812RGBW\\级联接线与跑马灯教程}
+\author{stm32dev 实验记录}
+\date{2026年7月14日}
+
+\begin{document}
+\maketitle
+
+\begin{center}
+\colorbox{warm}{\parbox{0.91\textwidth}{
+\textbf{最重要结论：}灯板上的标记通常是字母 \texttt{DI} 和 \texttt{DO}，不是数字
+\texttt{D1} 和 \texttt{D0}。\texttt{DI}=Data In，\texttt{DO}=Data Out。
+第一颗的 \texttt{DO} 接第二颗的 \texttt{DI}；不要把两个 \texttt{DI} 或两个
+\texttt{DO} 相连。只有数据线级联，电源必须并联。
+}}
+\end{center}
+
+\section{器件与信号方向}
+
+SK6812RGBW 把控制芯片与红、绿、蓝、白四路发光芯片集成在 5050 封装中。
+每颗像素接收自己的 32 位颜色数据，再将剩余数据从 \texttt{DOUT} 整形后传给下一颗。
+官方 Rev.01 规格给出的裸灯珠引脚如下：
+
+\begin{center}
+\begin{tabular}{cll}
+\toprule
+引脚 & 符号 & 功能 \\
+\midrule
+1 & VDD & 灯珠电源，推荐 5 V \\
+2 & DOUT/DO & 数据输出，接下一颗 DIN \\
+3 & VSS/GND & 电源地 \\
+4 & DIN/DI & 数据输入，第一颗接控制器 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+若你用的是已经焊在小板上的灯珠，以小板丝印和箭头为准。箭头方向应为
+\texttt{DI $\rightarrow$ DO}。断电后用万用表通断档确认焊盘走线，不要仅凭字符外形猜测。
+
+\section{推荐的可靠接线}
+
+规格允许的 VDD 范围为 3.5--5.5 V；在 VDD=5 V 时，数据高电平门限标为约 3.4 V。
+STM32 的 3.3 V 输出因此低于保证值，短线实验可能碰巧工作，但并不可靠。
+推荐用 \textbf{74AHCT125} 把 PA0 的 3.3 V 数据转换为 5 V。普通双向 BSS138
+I\textsuperscript{2}C 电平转换小板不适合这种高速单线波形。
+
+\begin{landscape}
+\thispagestyle{plain}
+\begin{center}
+\begin{tikzpicture}[
+  >=Latex,
+  font=\small,
+  box/.style={draw=navy,very thick,rounded corners=3pt,minimum width=32mm,
+    minimum height=20mm,align=center,fill=sky},
+  led/.style={draw=navy,very thick,rounded corners=3pt,minimum width=34mm,
+    minimum height=27mm,align=center,fill=mint},
+  smallbox/.style={draw=navy,thick,rounded corners=2pt,minimum width=22mm,
+    minimum height=12mm,align=center,fill=warm},
+  data/.style={->,very thick,draw=wiredata},
+  power/.style={very thick,draw=wirepower},
+  ground/.style={very thick,draw=wireground}
+]
+  \node[box] (mcu) at (0,0) {第二块 STM32H743\\\textbf{A0 / PA0}\quad GND};
+  \node[box] (buf) at (5,0) {74AHCT125\\1A=PA0\quad 1Y=输出\\1OE=GND};
+  \node[smallbox] (res) at (8.7,0) {330 $\Omega$\\串联电阻};
+  \node[led] (l1) at (12.2,0) {SK6812RGBW 1\\\textbf{DI}\quad\textbf{DO}\\VCC\quad GND};
+  \node[led] (l2) at (17.0,0) {SK6812RGBW 2\\\textbf{DI}\quad\textbf{DO 悬空}\\VCC\quad GND};
+  \node[box,fill=warm] (psu) at (8.7,4.2) {稳定 5 V 电源\\建议 $\geq$0.5 A\\不要接 STM32 3.3 V};
+
+  \draw[data] (mcu.east) -- node[above]{3.3 V 数据} (buf.west);
+  \draw[data] (buf.east) -- node[above]{5 V 逻辑} (res.west);
+  \draw[data] (res.east) -- node[above]{接第一颗 DI} (l1.west);
+  \draw[data] (l1.east) -- node[above]{\textbf{第一颗 DO $\rightarrow$ 第二颗 DI}} (l2.west);
+
+  \coordinate (vrailL) at (3.0,2.6);
+  \coordinate (vrailR) at (18.3,2.6);
+  \draw[power] (vrailL) -- (vrailR) node[right,text=wirepower]{+5 V 并联母线};
+  \draw[power] (psu.south) -- (8.7,2.6);
+  \draw[power,->] (5.0,2.6) -- (buf.north) node[pos=0.43,right,text=wirepower]{VCC};
+  \draw[power,->] (12.2,2.6) -- (l1.north) node[pos=0.43,right,text=wirepower]{VCC};
+  \draw[power,->] (17.0,2.6) -- (l2.north) node[pos=0.43,right,text=wirepower]{VCC};
+
+  \coordinate (grailL) at (-1.5,-2.5);
+  \coordinate (grailR) at (18.3,-2.5);
+  \draw[ground] (grailL) -- (grailR) node[right,text=wireground]{公共 GND};
+  \draw[ground] (mcu.south) -- (0,-2.5);
+  \draw[ground] (buf.south) -- (5,-2.5);
+  \draw[ground] (l1.south) -- (12.2,-2.5);
+  \draw[ground] (l2.south) -- (17,-2.5);
+  \draw[ground] (psu.west) -| (2.0,-2.5);
+
+  \node[align=left,anchor=north west,text=navy] at (-1.2,-3.2) {
+    每颗灯 VCC--GND 就近焊 0.1 $\mu$F；灯链入口并联 470--1000 $\mu$F/10 V 电解电容。\\
+    STM32 可继续由自己的 USB/5 V 供电，但其 GND 必须与灯电源 GND 相连。};
+\end{tikzpicture}
+\end{center}
+\end{landscape}
+
+\subsection{逐线连接表}
+
+\begin{longtable}{>{\bfseries}p{0.25\textwidth}p{0.65\textwidth}}
+\toprule
+起点 & 终点 \\
+\midrule
+STM32 A0/PA0 & 74AHCT125 的 1A（引脚2） \\
+74AHCT125 1OE（引脚1） & 公共 GND，使能该缓冲通道 \\
+74AHCT125 1Y（引脚3） & 330 $\Omega$ 电阻，再接第一颗 DI \\
+74AHCT125 VCC（引脚14） & 外部 +5 V \\
+74AHCT125 GND（引脚7） & 公共 GND \\
+第一颗 DO & 第二颗 DI \\
+第二颗 DO & 不连接；以后增加第三颗时才接第三颗 DI \\
+两颗 VCC & 同时接 +5 V，属于并联 \\
+两颗 GND & 同时接公共 GND，属于并联 \\
+STM32 GND & 公共 GND；这是数据电平的共同参考 \\
+\bottomrule
+\end{longtable}
+
+\section{没有 74AHCT125 时的最简临时测试}
+
+可先用很短的线尝试：
+\[
+\text{PA0} \rightarrow 330\,\Omega \rightarrow \text{第一颗 DI},\qquad
+\text{所有 GND 共地},\qquad
+\text{第一颗 DO} \rightarrow \text{第二颗 DI}.
+\]
+两颗灯仍由稳定 5 V 电源并联供电。此接法若出现随机颜色、只闪一下、第二颗不响应或复位后乱亮，
+首先增加 74AHCT125，而不是反复改软件时序。不要把 STM32 的 3.3 V 引脚作为灯珠电源。
+
+\section{固件行为与协议}
+
+固件文件为：
+\begin{lstlisting}
+firmware/stm32_sensor_head_lcd/src/sk6812_rgbw_main.c
+\end{lstlisting}
+
+它使用 PA0 输出 800 kbit/s NRZ 数据。官方时序为：逻辑0高电平约 0.3 $\mu$s、
+逻辑1高电平约 0.6 $\mu$s、单 bit 周期约 1.25 $\mu$s，帧后保持低电平至少
+80 $\mu$s。每颗灯接收 32 bit；本固件按规格中的 \texttt{R,G,B,W} 顺序发送。
+若实物颜色次序不符，把源码中的 \texttt{SK6812\_USE\_GRBW\_ORDER} 改为 1。
+
+两颗灯以 64 个小步平滑交叉：第一颗逐渐变暗时第二颗逐渐变亮，然后反向移动并依次切换
+红、绿、蓝、独立白光通道。默认峰值为 48/255，适合首次上电检查；确认电源、温升和颜色后，
+再逐步增大 \texttt{RUNNER\_LEVEL}。
+
+\section{构建、烧录与恢复}
+
+在仓库根目录运行：
+\begin{lstlisting}[language=bash]
+make -C firmware/stm32_sensor_head_lcd sk6812
+make -C firmware/stm32_sensor_head_lcd flash-sk6812
+\end{lstlisting}
+
+该目标生成独立的 \texttt{build\_sk6812/stm32\_sk6812\_rgbw.elf}，不会更改
+TSL2591/AS7343 主源码。若要把某块板恢复为传感器头：
+\begin{lstlisting}[language=bash]
+make -C firmware/stm32_sensor_head_lcd flash
+\end{lstlisting}
+
+\section{故障定位}
+
+\begin{tabularx}{\textwidth}{>{\bfseries}p{0.25\textwidth}X}
+\toprule
+现象 & 优先检查 \\
+\midrule
+两颗都不亮 & 5 V 是否真实到达 VCC；公共地；DI/DO 是否看反；PA0 是否接到第一颗 DI。\\
+第一颗亮、第二颗不亮 & 第一颗 DO 到第二颗 DI 的方向与焊点；第二颗 VCC/GND。\\
+随机闪烁或颜色漂移 & 74AHCT125、电源去耦、330 $\Omega$ 电阻、数据线长度、公共地。\\
+红绿互换 & 实物采用 GRBW 顺序；切换源码宏。\\
+上电后一直保持旧颜色 & SK6812 会锁存上一帧；MCU 启动后必须发送全零帧，当前固件已经执行。\\
+\bottomrule
+\end{tabularx}
+
+\section{最少购买清单}
+
+\begin{itemize}
+  \item \texttt{74AHCT125 5V 电平转换模块}（注意是 AHCT，不是普通 HC）；
+  \item 330 $\Omega$ 普通电阻一个；
+  \item 0.1 $\mu$F 陶瓷电容每颗灯一个，缓冲器旁一个；
+  \item 470--1000 $\mu$F、耐压 10 V 或更高的电解电容一个；
+  \item 稳定 5 V、至少 0.5 A 电源；你已有 5 V/3 A 电源也可以。
+\end{itemize}
+
+\section*{规格依据}
+
+引脚定义、电压范围、输入门限、800 kbit/s 时序、80 $\mu$s 复位时间和 32 位格式来自
+\href{https://cdn-shop.adafruit.com/product-files/2757/p2757_SK6812RGBW_REV01.pdf}
+{SK6812RGBW Specification Rev.01}。淘宝商品可能使用兼容芯片或不同颜色字节顺序，最终应以
+实物丝印、箭头和逐色测试为准。
+
+\end{document}
