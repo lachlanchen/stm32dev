@@ -57,7 +57,8 @@
 #define UI_TEXT                 0xFFFFu
 #define UI_MUTED                0xA514u
 
-static const uint8_t expected_id[5] = {0xECu, 0xDAu, 0x10u, 0x15u, 0x44u};
+static const uint8_t supported_id_15[5] = {0xECu, 0xDAu, 0x10u, 0x15u, 0x44u};
+static const uint8_t supported_id_95[5] = {0xECu, 0xDAu, 0x10u, 0x95u, 0x44u};
 static const uint32_t timing_profiles[TIMING_PROFILE_COUNT] = {
     0x0F0F0F0Fu,
     0x0A0A0A0Au,
@@ -302,7 +303,10 @@ static nand_result_t nand_check(void)
                 memcpy(baseline, sample, sizeof(baseline));
                 baseline_valid = true;
             }
-            if (bytes_equal(sample, expected_id)) result.expected_reads++;
+            if (bytes_equal(sample, supported_id_15) ||
+                bytes_equal(sample, supported_id_95)) {
+                result.expected_reads++;
+            }
             if (bytes_equal(sample, baseline)) result.consistent_reads++;
             memcpy(result.id, sample, sizeof(result.id));
         }
@@ -637,7 +641,8 @@ int main(void)
 
     fmc_ok = nand_bus_init();
     printf("# NAND read-only solder diagnostic\r\n");
-    printf("# expected_id=EC DA 10 15 44 checks=%u no_erase=1 no_write=1\r\n",
+    printf("# supported_ids='EC DA 10 15 44'|'EC DA 10 95 44' "
+           "checks=%u no_erase=1 no_write=1\r\n",
            TOTAL_ID_CHECKS);
     printf("# language=%s commands='LANG ZH'|'LANG EN'\r\n",
            nand_i18n_language_code(ui_language));

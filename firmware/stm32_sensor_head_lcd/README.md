@@ -33,7 +33,8 @@ Samsung `K9F2G08U0C-SIB0`. The normal `src/main.c` sensor application is not
 modified or linked into this image. The diagnostic forces lamp outputs
 `PA0/PA1` low, initializes FMC Bank 3, and continuously displays:
 
-- exact five-byte ID comparison against `EC DA 10 15 44`;
+- exact five-byte ID comparison against the documented/observed signatures
+  `EC DA 10 15 44` and `EC DA 10 95 44`;
 - 96 ID reads across three conservative FMC timing profiles;
 - ID stability, stuck-bus detection, R/B status, reset completion, and WP state;
 - a green `PASS` or red `FAIL` screen with a bit-coded failure mask.
