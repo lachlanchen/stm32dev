@@ -7,8 +7,10 @@ This independent bare-metal image targets the newly detected Cortex-M3 board:
 - data output: `PA0 / A0`
 - debugger: Telesky ST-Link/V2, USB `0483:3748`
 
-It repeatedly displays off, red, green, blue, and the dedicated white channel.
-Each illuminated color lasts one second at `48/255` bring-up intensity.
+It controls two daisy-chained pixels. LED1 is the first device connected to
+`PA0`; LED2 receives LED1's `DO`. The image alternates once per second between
+`LED1=red, LED2=green` and `LED1=green, LED2=red`, with both pixels updating on
+the same latch edge. Intensity remains limited to `48/255` for bring-up.
 
 ## Wiring
 

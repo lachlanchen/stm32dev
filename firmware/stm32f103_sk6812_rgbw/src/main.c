@@ -118,7 +118,7 @@ static void send_byte(uint8_t value)
     }
 }
 
-static void show(Pixel pixel)
+static void send_pixel(Pixel pixel)
 {
 #if SK6812_USE_GRBW_ORDER
     send_byte(pixel.g);
@@ -129,6 +129,13 @@ static void show(Pixel pixel)
 #endif
     send_byte(pixel.b);
     send_byte(pixel.w);
+}
+
+static void show_two(Pixel led1, Pixel led2)
+{
+    /* LED1 consumes the first 32 bits; LED2 consumes the next 32 bits. */
+    send_pixel(led1);
+    send_pixel(led2);
     GPIOA_BRR = PA0;
     delay_us(SK6812_RESET_US);
 }
@@ -138,25 +145,18 @@ int main(void)
     static const Pixel off   = {0u, 0u, 0u, 0u};
     static const Pixel red   = {TEST_LEVEL, 0u, 0u, 0u};
     static const Pixel green = {0u, TEST_LEVEL, 0u, 0u};
-    static const Pixel blue  = {0u, 0u, TEST_LEVEL, 0u};
-    static const Pixel white = {0u, 0u, 0u, TEST_LEVEL};
-    static const Pixel colors[] = {red, green, blue, white};
 
     clock_init_64mhz();
     pa0_init();
     dwt_init();
 
-    show(off);
+    show_two(off, off);
     delay_ms(500u);
 
     for (;;) {
-        for (uint32_t i = 0u; i < 4u; i++) {
-            show(off);
-            delay_ms(250u);
-            show(colors[i]);
-            delay_ms(1000u);
-        }
-        show(off);
+        show_two(red, green);
+        delay_ms(1000u);
+        show_two(green, red);
         delay_ms(1000u);
     }
 }
