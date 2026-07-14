@@ -98,6 +98,25 @@ openocd -f interface/stlink.cfg -f target/stm32h7x.cfg -c 'adapter speed 1000' -
 make -C firmware/minimal
 ```
 
+## NAND Diagnostic UI Language
+
+The read-only NAND diagnostic boots in Chinese (`zh-CN`) and keeps a complete English fallback. Text is selected through stable translation IDs, while the compact 24 x 24 Chinese glyph set is embedded in firmware; no SD card or external font file is required.
+
+With ST-Link connected, switch the live display without rebuilding or resetting:
+
+```powershell
+.\firmware\stm32_sensor_head_lcd\tools\set-nand-diag-language.ps1 zh
+.\firmware\stm32_sensor_head_lcd\tools\set-nand-diag-language.ps1 en
+```
+
+If the board UART is physically routed to the host, `LANG ZH` and `LANG EN` at 115200 baud are also accepted. Resetting the board restores the default Chinese UI.
+
+To regenerate the embedded font after adding Chinese translations:
+
+```powershell
+.\firmware\stm32_sensor_head_lcd\tools\generate_nand_diag_cn_font.ps1
+```
+
 ## Citation
 
 If you use `stm32dev` in research or documentation, cite this repository. GitHub reads [CITATION.cff](CITATION.cff) and shows a **Cite this repository** panel on the repo page.

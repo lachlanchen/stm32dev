@@ -3,11 +3,11 @@ APP ?= sensor
 ifeq ($(APP),nand_diag)
 PROJECT := stm32_nand_diag_lcd
 BUILD_DIR := build_nand_diag
-MAIN_SRC := src/nand_diag_main.c
+APP_SRCS := src/nand_diag_main.c src/nand_diag_i18n.c
 else
 PROJECT := stm32_sensor_head_lcd
 BUILD_DIR := build
-MAIN_SRC := src/main.c
+APP_SRCS := src/main.c
 endif
 
 VENDOR := vendor
@@ -37,7 +37,7 @@ LDFLAGS := $(CPU_FLAGS) -T$(SRC)/stm32h743_flash.ld -nostartfiles -Wl,--gc-secti
 
 SRCS := \
   $(SRC)/startup_stm32h743xx_gcc.s \
-  $(MAIN_SRC) \
+  $(APP_SRCS) \
   $(SRC)/delay.c \
   $(SRC)/usart.c \
   $(VENDOR)/USER/system_stm32h7xx.c \

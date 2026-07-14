@@ -4,6 +4,7 @@
 #include "usart.h"
 #include "sdram.h"
 #include "lcd.h"
+#include "nand_diag_i18n.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -86,6 +87,9 @@ volatile uint32_t nand_diag_consistent_reads = 0u;
 volatile uint32_t nand_diag_cycles = 0u;
 volatile uint32_t nand_diag_pass_cycles = 0u;
 volatile uint32_t nand_diag_fail_cycles = 0u;
+volatile uint32_t nand_diag_language = NAND_LANG_ZH_CN;
+
+static nand_language_t ui_language = NAND_LANG_ZH_CN;
 
 void SysTick_Handler(void)
 {
@@ -378,6 +382,35 @@ static void ui_fill(uint16_t sx, uint16_t sy, uint16_t ex, uint16_t ey,
     __DSB();
 }
 
+static void draw_cn_glyph(uint16_t x, uint16_t y, uint8_t glyph_id,
+                          uint16_t color, uint8_t scale)
+{
+    const uint8_t *bitmap = nand_i18n_glyph_bitmap(glyph_id);
+    if (bitmap == NULL || scale == 0u) return;
+
+    for (uint8_t row = 0; row < NAND_I18N_GLYPH_HEIGHT; ++row) {
+        for (uint8_t col = 0; col < NAND_I18N_GLYPH_WIDTH; ++col) {
+            uint8_t packed = bitmap[row * NAND_I18N_GLYPH_ROW_BYTES + col / 8u];
+            if ((packed & (uint8_t)(0x80u >> (col & 7u))) != 0u) {
+                ui_fill((uint16_t)(x + col * scale),
+                        (uint16_t)(y + row * scale),
+                        (uint16_t)(x + col * scale + scale - 1u),
+                        (uint16_t)(y + row * scale + scale - 1u),
+                        color);
+            }
+        }
+    }
+}
+
+static void draw_cn_text(uint16_t x, uint16_t y, const uint8_t *glyphs,
+                         uint8_t glyph_count, uint16_t color, uint8_t scale)
+{
+    for (uint8_t i = 0; i < glyph_count; ++i) {
+        draw_cn_glyph(x, y, glyphs[i], color, scale);
+        x = (uint16_t)(x + (NAND_I18N_GLYPH_WIDTH + 2u) * scale);
+    }
+}
+
 static void draw_char(uint16_t x, uint16_t y, char c, uint16_t color, uint8_t scale)
 {
     const char *pattern = tiny_pattern(c);
@@ -403,20 +436,29 @@ static void draw_text(uint16_t x, uint16_t y, const char *text, uint16_t color, 
     }
 }
 
+static void draw_i18n(uint16_t x, uint16_t y, nand_text_id_t text_id,
+                      uint16_t color, uint8_t chinese_scale,
+                      uint8_t english_scale)
+{
+    const nand_i18n_text_t *text = nand_i18n_get(ui_language, text_id);
+    if (ui_language == NAND_LANG_ZH_CN && text->glyphs != NULL) {
+        draw_cn_text(x, y, text->glyphs, text->glyph_count, color, chinese_scale);
+    } else {
+        draw_text(x, y, text->ascii, color, english_scale);
+    }
+}
+
 static void draw_static_screen(void)
 {
     ui_fill(0, 0, (uint16_t)(lcddev.width - 1u),
             (uint16_t)(lcddev.height - 1u), UI_BG);
-    draw_text(28, 18, "NAND FLASH SOLDER CHECK", UI_TEXT, 4);
-    draw_text(30, 54, "READ ONLY  NO ERASE  NO WRITE", UI_MUTED, 2);
+    draw_text(28, 18, "NAND", UI_TEXT, 4);
+    draw_i18n(110, 14, NAND_TEXT_TITLE, UI_TEXT, 1, 4);
+    draw_text((uint16_t)(lcddev.width - 118u), 18,
+              nand_i18n_language_code(ui_language), UI_CYAN, 3);
+    draw_i18n(30, 52, NAND_TEXT_READ_ONLY, UI_MUTED, 1, 2);
     ui_fill(24, 80, (uint16_t)(lcddev.width - 24u), 192, UI_YELLOW);
-    draw_text(48, 112, "TEST", BLACK, 8);
-}
-
-static void format_id(char *buffer, size_t size, const uint8_t id[5])
-{
-    snprintf(buffer, size, "ID %02X %02X %02X %02X %02X",
-             id[0], id[1], id[2], id[3], id[4]);
+    draw_i18n(48, 104, NAND_TEXT_TESTING, BLACK, 2, 8);
 }
 
 static void draw_badge(uint16_t x, uint16_t y, uint16_t width,
@@ -436,29 +478,45 @@ static void draw_result(const nand_result_t *result)
     uint16_t x = 24u;
 
     ui_fill(24, 80, (uint16_t)(width - 24u), 192, pass ? UI_GREEN : UI_RED);
-    draw_text(48, 108, pass ? "PASS" : "FAIL", UI_TEXT, 10);
-    draw_text(260, 128, pass ? "NAND CONNECTED" : "CHECK SOLDERING", UI_TEXT, 4);
+    draw_i18n(48, 104, pass ? NAND_TEXT_PASS : NAND_TEXT_FAIL, UI_TEXT, 2, 10);
+    draw_i18n(260, 116,
+              pass ? NAND_TEXT_CONNECTED : NAND_TEXT_CHECK_SOLDERING,
+              UI_TEXT, 1, 4);
 
     ui_fill(24, 208, (uint16_t)(width - 24u), 404, UI_PANEL);
-    format_id(line, sizeof(line), result->id);
-    draw_text(40, 228, line, UI_CYAN, 4);
-    draw_text(40, 266, "EXPECT EC DA 10 15 44", UI_MUTED, 3);
+    draw_i18n(40, 222, NAND_TEXT_CHIP_ID, UI_CYAN, 1, 3);
+    snprintf(line, sizeof(line), "%02X %02X %02X %02X %02X",
+             result->id[0], result->id[1], result->id[2], result->id[3], result->id[4]);
+    draw_text(170, 228, line, UI_CYAN, 4);
 
-    snprintf(line, sizeof(line), "STATUS %02X  READY %s  WP %s",
-             result->status,
-             (result->status & NAND_STATUS_READY) ? "YES" : "NO",
-             (result->status & NAND_STATUS_WP_HIGH) ? "HIGH" : "LOW");
-    draw_text(40, 302, line, UI_TEXT, 3);
+    draw_i18n(40, 262, NAND_TEXT_EXPECT, UI_MUTED, 1, 3);
+    draw_text(170, 268, "EC DA 10 15 44", UI_MUTED, 3);
 
-    snprintf(line, sizeof(line), "STABLE %03u/%03u  EXACT %03u/%03u",
-             result->consistent_reads, TOTAL_ID_CHECKS,
-             result->expected_reads, TOTAL_ID_CHECKS);
-    draw_text(40, 338, line, UI_TEXT, 3);
+    draw_i18n(40, 296, NAND_TEXT_STATUS, UI_TEXT, 1, 3);
+    snprintf(line, sizeof(line), "%02X", result->status);
+    draw_text(128, 302, line, UI_TEXT, 3);
+    draw_i18n(210, 296, NAND_TEXT_READY, UI_TEXT, 1, 3);
+    draw_i18n(285, 296,
+              (result->status & NAND_STATUS_READY) ? NAND_TEXT_YES : NAND_TEXT_NO,
+              UI_TEXT, 1, 3);
+    draw_i18n(390, 296, NAND_TEXT_WRITE_PROTECT, UI_TEXT, 1, 3);
+    draw_i18n(570, 296,
+              (result->status & NAND_STATUS_WP_HIGH) ? NAND_TEXT_HIGH : NAND_TEXT_LOW,
+              UI_TEXT, 1, 3);
 
-    snprintf(line, sizeof(line), "CYCLES %06lu  FAIL MASK %08lX",
-             (unsigned long)nand_diag_cycles,
-             (unsigned long)result->fail_mask);
-    draw_text(40, 374, line, UI_MUTED, 3);
+    draw_i18n(40, 334, NAND_TEXT_STABLE, UI_TEXT, 1, 3);
+    snprintf(line, sizeof(line), "%03u/%03u", result->consistent_reads, TOTAL_ID_CHECKS);
+    draw_text(125, 340, line, UI_TEXT, 3);
+    draw_i18n(300, 334, NAND_TEXT_EXACT, UI_TEXT, 1, 3);
+    snprintf(line, sizeof(line), "%03u/%03u", result->expected_reads, TOTAL_ID_CHECKS);
+    draw_text(385, 340, line, UI_TEXT, 3);
+
+    draw_i18n(40, 370, NAND_TEXT_CYCLES, UI_MUTED, 1, 3);
+    snprintf(line, sizeof(line), "%06lu", (unsigned long)nand_diag_cycles);
+    draw_text(125, 376, line, UI_MUTED, 3);
+    draw_i18n(300, 370, NAND_TEXT_FAIL_MASK, UI_MUTED, 1, 3);
+    snprintf(line, sizeof(line), "%08lX", (unsigned long)result->fail_mask);
+    draw_text(420, 376, line, UI_MUTED, 3);
 
     draw_badge(x, 424, badge_width, "FMC", (result->fail_mask & FAIL_FMC) == 0u);
     x = (uint16_t)(x + badge_width + badge_gap);
@@ -477,11 +535,67 @@ static void draw_result(const nand_result_t *result)
     draw_badge(x, 424, badge_width, "BUS", (result->fail_mask & FAIL_BUS_STUCK) == 0u);
 
     ui_fill(24, 486, (uint16_t)(width - 24u), 548, UI_PANEL);
-    snprintf(line, sizeof(line), "RB IDLE %s  RESET %s  BUSY PULSE %s",
-             result->rb_idle ? "HIGH" : "LOW",
-             result->reset_ready ? "READY" : "TIMEOUT",
-             result->rb_busy_seen ? "SEEN" : "NOT SEEN");
-    draw_text(40, 506, line, UI_TEXT, 3);
+    draw_text(40, 506, "R/B", UI_TEXT, 3);
+    draw_i18n(90, 498, NAND_TEXT_IDLE, UI_TEXT, 1, 3);
+    draw_i18n(150, 498, result->rb_idle ? NAND_TEXT_HIGH : NAND_TEXT_LOW,
+              UI_TEXT, 1, 3);
+    draw_i18n(250, 498, NAND_TEXT_RESET, UI_TEXT, 1, 3);
+    draw_i18n(330, 498,
+              result->reset_ready ? NAND_TEXT_NORMAL : NAND_TEXT_TIMEOUT,
+              UI_TEXT, 1, 3);
+    draw_i18n(470, 498, NAND_TEXT_BUSY_SIGNAL, UI_TEXT, 1, 3);
+    draw_i18n(590, 498, result->rb_busy_seen ? NAND_TEXT_YES : NAND_TEXT_NO,
+              UI_TEXT, 1, 3);
+}
+
+static bool poll_language_command(void)
+{
+    static char command[20];
+    static uint8_t length = 0u;
+    uint8_t byte;
+    bool changed = false;
+
+    for (uint8_t guard = 0; guard < 32u; ++guard) {
+        if (HAL_UART_Receive(&UART1_Handler, &byte, 1u, 0u) != HAL_OK) break;
+        if (byte == '\r' || byte == '\n') {
+            if (length == 0u) continue;
+            command[length] = '\0';
+            if (strcmp(command, "LANG EN") == 0 || strcmp(command, "EN") == 0) {
+                changed = ui_language != NAND_LANG_EN;
+                ui_language = NAND_LANG_EN;
+            } else if (strcmp(command, "LANG ZH") == 0 ||
+                       strcmp(command, "LANG ZH-CN") == 0 ||
+                       strcmp(command, "ZH") == 0) {
+                changed = ui_language != NAND_LANG_ZH_CN;
+                ui_language = NAND_LANG_ZH_CN;
+            }
+            nand_diag_language = (uint32_t)ui_language;
+            printf("# language=%s\r\n", nand_i18n_language_code(ui_language));
+            length = 0u;
+        } else if (length + 1u < sizeof(command)) {
+            if (byte >= 'a' && byte <= 'z') byte = (uint8_t)(byte - 'a' + 'A');
+            command[length++] = (char)byte;
+        } else {
+            length = 0u;
+        }
+    }
+    return changed;
+}
+
+static bool sync_external_language_request(void)
+{
+    uint32_t requested = nand_diag_language;
+
+    if (requested > (uint32_t)NAND_LANG_EN) {
+        nand_diag_language = (uint32_t)ui_language;
+        return false;
+    }
+    if (requested == (uint32_t)ui_language) return false;
+
+    ui_language = (nand_language_t)requested;
+    printf("# language=%s source=external\r\n",
+           nand_i18n_language_code(ui_language));
+    return true;
 }
 
 static void publish_result(const nand_result_t *result)
@@ -525,8 +639,13 @@ int main(void)
     printf("# NAND read-only solder diagnostic\r\n");
     printf("# expected_id=EC DA 10 15 44 checks=%u no_erase=1 no_write=1\r\n",
            TOTAL_ID_CHECKS);
+    printf("# language=%s commands='LANG ZH'|'LANG EN'\r\n",
+           nand_i18n_language_code(ui_language));
 
     while (1) {
+        bool language_changed = poll_language_command();
+        if (sync_external_language_request()) language_changed = true;
+        if (language_changed) draw_static_screen();
         result = nand_check();
         if (!fmc_ok) result.fail_mask |= FAIL_FMC;
         publish_result(&result);

@@ -58,3 +58,22 @@ Restore the normal sensor-head firmware at any time:
 ```powershell
 make -C firmware/stm32_sensor_head_lcd flash
 ```
+
+### Diagnostic UI languages
+
+The NAND diagnostic uses a small key-based i18n layer. It starts in Simplified
+Chinese (`zh-CN`) and keeps a complete English fallback. Send either command on
+USART1 at 115200 baud to switch immediately without rebuilding:
+
+```text
+LANG ZH
+LANG EN
+```
+
+Chinese labels use an embedded 24-by-24 bitmap font, so the firmware does not
+depend on an SD card or the vendor text renderer. Regenerate the subset after
+adding translations with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File firmware/stm32_sensor_head_lcd/tools/generate_nand_diag_cn_font.ps1
+```
