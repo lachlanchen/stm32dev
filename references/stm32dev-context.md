@@ -45,3 +45,39 @@ This file is the durable handoff for future STM32 firmware sessions.
 - `references/nand-diagnostic-memory-architecture-cn.md`
 - `references/w25q64-qspi-detection-cn.md`
 
+## Second STM32 and Addressable LEDs
+
+The second connected board is a verified STM32F103 medium-density target, not
+another H7. OpenOCD reports device ID `0x410`, Cortex-M3, 128 KiB Flash, and a
+target voltage near 3.215 V. It is reached through the external Telesky ST-Link
+V2 with USB VID:PID `0483:3748`; the H7 onboard ST-Link/V2-1 uses `0483:374B`.
+Always filter OpenOCD by PID before programming when both boards are attached.
+
+Current verified addressable-LED wiring:
+
+```text
+STM32F103 PA0/A0 -> first SK6812RGBW DIN
+first SK6812 DOUT -> second SK6812 DIN
+external 5 V      -> both LED VCC pins in parallel
+external GND      -> both LED GND pins and STM32 GND
+```
+
+The missing shared ground caused rapid random flashing. After grounds were
+joined, the static red/green firmware worked correctly. Keep 5 V away from the
+STM32 3V3 pin. Direct 3.3 V data works on the current short wiring, but a
+`74AHCT125` level shifter and 330-ohm data resistor are recommended for a
+permanent setup.
+
+F103 firmware images are intentionally independent:
+
+```text
+firmware/stm32f103_sk6812_rgbw          rotating color test
+firmware/stm32f103_sk6812_static_led1   verified static red/green state
+firmware/stm32f103_addressable_led_ramp full 0..255..0 range test
+```
+
+Build and burn the ramp without touching the H7:
+
+```powershell
+make -C firmware\stm32f103_addressable_led_ramp flash
+```
