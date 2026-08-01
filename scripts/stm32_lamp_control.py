@@ -14,6 +14,7 @@ to zero. Use --hold only when a persistent on state is explicitly needed.
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 
@@ -21,13 +22,18 @@ TIM2_CCR1 = "0x40000034"
 TIM2_CCR2 = "0x40000038"
 PWM_TOP = 65535
 DEFAULT_DUTY = 52428
+DEFAULT_ADAPTER_SERIAL = os.environ.get(
+    "STM32_H7_STLINK_SERIAL", "00710049572D430E4E4C3054"
+)
 
 
-def openocd(commands: list[str]) -> None:
+def openocd(commands: list[str], adapter_serial: str = DEFAULT_ADAPTER_SERIAL) -> None:
     cmd = [
         "openocd",
         "-f",
         "interface/stlink.cfg",
+        "-c",
+        f"adapter serial {adapter_serial}",
         "-f",
         "target/stm32h7x.cfg",
         "-c",
@@ -38,7 +44,12 @@ def openocd(commands: list[str]) -> None:
     subprocess.run(cmd, check=True)
 
 
-def write_pwm(duty1: int, duty2: int, verify: bool = True) -> None:
+def write_pwm(
+    duty1: int,
+    duty2: int,
+    verify: bool = True,
+    adapter_serial: str = DEFAULT_ADAPTER_SERIAL,
+) -> None:
     duty1 = max(0, min(PWM_TOP, int(duty1)))
     duty2 = max(0, min(PWM_TOP, int(duty2)))
     commands = [
@@ -49,10 +60,15 @@ def write_pwm(duty1: int, duty2: int, verify: bool = True) -> None:
     if verify:
         commands += [f"mdw {TIM2_CCR1} 1", f"mdw {TIM2_CCR2} 1"]
     commands += ["shutdown"]
-    openocd(commands)
+    openocd(commands, adapter_serial)
 
 
-def pulse(duty1: int, duty2: int, seconds: float) -> None:
+def pulse(
+    duty1: int,
+    duty2: int,
+    seconds: float,
+    adapter_serial: str = DEFAULT_ADAPTER_SERIAL,
+) -> None:
     ms = max(1, int(seconds * 1000))
     commands = [
         "init",
@@ -65,7 +81,7 @@ def pulse(duty1: int, duty2: int, seconds: float) -> None:
         f"mdw {TIM2_CCR2} 1",
         "shutdown",
     ]
-    openocd(commands)
+    openocd(commands, adapter_serial)
 
 
 def main() -> int:
@@ -78,21 +94,29 @@ def main() -> int:
     parser.add_argument("--duty", type=int, default=DEFAULT_DUTY, help="16-bit PWM duty, default 52428")
     parser.add_argument("--seconds", type=float, default=3.0, help="pulse duration, default 3 seconds")
     parser.add_argument("--hold", action="store_true", help="leave selected lamp(s) on instead of pulsing")
+    parser.add_argument(
+        "--adapter-serial",
+        default=DEFAULT_ADAPTER_SERIAL,
+        help="H7 ST-Link serial; defaults to the known onboard debugger",
+    )
     args = parser.parse_args()
 
     if args.command == "off":
-        write_pwm(0, 0)
+        write_pwm(0, 0, adapter_serial=args.adapter_serial)
         return 0
     if args.command == "status":
-        openocd(["init", f"mdw {TIM2_CCR1} 1", f"mdw {TIM2_CCR2} 1", "shutdown"])
+        openocd(
+            ["init", f"mdw {TIM2_CCR1} 1", f"mdw {TIM2_CCR2} 1", "shutdown"],
+            args.adapter_serial,
+        )
         return 0
 
     duty1 = args.duty if args.command in ("lamp1", "both") else 0
     duty2 = args.duty if args.command in ("lamp2", "both") else 0
     if args.hold:
-        write_pwm(duty1, duty2)
+        write_pwm(duty1, duty2, adapter_serial=args.adapter_serial)
     else:
-        pulse(duty1, duty2, args.seconds)
+        pulse(duty1, duty2, args.seconds, args.adapter_serial)
     return 0
 
 
