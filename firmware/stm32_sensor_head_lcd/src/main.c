@@ -50,8 +50,8 @@
 #define PIXEL_DATA_HZ        800000u
 #define PIXEL_T0H_NS         300u
 #define PIXEL_T1H_NS         600u
-#define PIXEL_RESET_US       100u
-#define PIXEL_TEST_LEVEL     32u
+#define PIXEL_RESET_US       300u
+#define PIXEL_TEST_LEVEL     96u
 
 #define UI_BG                0x0841u
 #define UI_PANEL             0x18E3u
@@ -223,6 +223,49 @@ static void pixel_show(uint8_t red, uint8_t green, uint8_t blue, uint8_t white)
         __enable_irq();
     }
     delay_us(PIXEL_RESET_US);
+}
+
+static void pixel_show_channel(uint8_t channel, uint8_t level)
+{
+    switch (channel) {
+    case 0u:
+        pixel_show(level, 0u, 0u, 0u);
+        break;
+    case 1u:
+        pixel_show(0u, level, 0u, 0u);
+        break;
+    case 2u:
+        pixel_show(0u, 0u, level, 0u);
+        break;
+    default:
+        pixel_show(0u, 0u, 0u, level);
+        break;
+    }
+}
+
+static void pixel_demo_once(void)
+{
+    uint8_t channel;
+
+    /* First identify R, G, B and the independent white die. */
+    for (channel = 0u; channel < 4u; ++channel) {
+        pixel_show_channel(channel, PIXEL_TEST_LEVEL);
+        HAL_Delay(900u);
+        pixel_show(0u, 0u, 0u, 0u);
+        HAL_Delay(150u);
+    }
+
+    /* Then fade each die smoothly from bright to dark. */
+    for (channel = 0u; channel < 4u; ++channel) {
+        int16_t level;
+        for (level = (int16_t)PIXEL_TEST_LEVEL; level >= 0; --level) {
+            pixel_show_channel(channel, (uint8_t)level);
+            HAL_Delay(12u);
+        }
+        HAL_Delay(150u);
+    }
+
+    pixel_show(0u, 0u, 0u, 0u);
 }
 
 void SysTick_Handler(void)
@@ -1181,15 +1224,17 @@ int main(void)
     HAL_Init();
     Stm32_Clock_Init(160, 5, 2, 4); /* 400 MHz */
     delay_init(400);
-    pixel_gpio_init();
-    pixel_timing_init();
-    pixel_show(PIXEL_TEST_LEVEL, 0u, 0u, 0u);
     uart_init(115200);
     lamp_pwm_init();
     capture_log_init_metadata();
     SDRAM_Init();
     LCD_Init();
     LCD_Display_Dir(1);
+
+    /* Initialize PA3 last so no board peripheral can alter the data pin. */
+    pixel_gpio_init();
+    pixel_timing_init();
+    pixel_demo_once();
 
     draw_startup();
     i2c_select_working_bus();
