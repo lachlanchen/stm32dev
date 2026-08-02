@@ -35,13 +35,10 @@ Lamp and addressable-pixel outputs:
 The pixel uses an external regulated 5 V supply. Never connect it to the 12 V
 tungsten supply. A 5 V AHCT data buffer is recommended; direct 3.3 V data may
 work for a short test but is not guaranteed. The current diagnostic firmware
-loops an SK6812 RGBW pixel through `R, G, B, W`, holding each state for three
-seconds. It uses a 32-bit `GRBW` frame, approximately 300 ns `T0H`, 600 ns
-`T1H`, and a 300 us reset interval. This diagnostic intentionally pauses later
-sensor initialization while the loop runs.
-
-The PA3 waveform starts its DWT timing window before asserting the GPIO high,
-matching the pulse-generation method verified on the STM32F103 two-pixel rig.
+transmits one SK6812 RGBW 32-bit `GRBW` red frame, using approximately 300 ns
+`T0H`, 600 ns `T1H`, and a 300 us reset interval, then leaves the data line low.
+SK6812 retains the latched color without periodic refresh. Reset the MCU after
+reconnecting a loose GND or DI wire.
 The PA3 waveform is emitted as a short GPIO/DWT transaction, so TIM2 continues
 running the tungsten-lamp PWM while pixel data is sent.
 
@@ -132,3 +129,22 @@ Restore the sensor-head image with `make -C firmware/stm32_sensor_head_lcd flash
 Use an external 5 V supply, common ground, a 5 V AHCT-level buffer, local
 decoupling, and connect first-pixel `DOUT` to second-pixel `DIN`. See the
 [Chinese wiring tutorial](../../publications/sk6812_rgbw_stm32_cn/sk6812_rgbw_stm32_cn.pdf).
+
+## Independent PA3 one-pixel test
+
+`src/sk6812_pa3_test_main.c` is a minimal image for one SK6812RGBW connected to
+`PA3/A3`. It loops through red, green, blue, and white, holding each color for
+three seconds. It uses the 400 MHz Cortex-M7 clock for DWT pulse timing and a
+32-bit `GRBW` frame. The normal LCD/sensor source remains separate and is not
+linked into this test image; the LCD is intentionally not initialized.
+
+```powershell
+make -C firmware\stm32_sensor_head_lcd sk6812-pa3-test
+make -C firmware\stm32_sensor_head_lcd flash-sk6812-pa3-test
+```
+
+Restore the unchanged LCD/sensor application with:
+
+```powershell
+make -C firmware\stm32_sensor_head_lcd flash
+```

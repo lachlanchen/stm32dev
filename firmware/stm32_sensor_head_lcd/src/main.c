@@ -194,8 +194,8 @@ static inline void pixel_wait_cycles(uint32_t start, uint32_t count)
 static inline void pixel_write_bit(uint8_t one)
 {
     uint32_t high_cycles = one ? pixel_t1h_cycles : pixel_t0h_cycles;
-    uint32_t start = DWT->CYCCNT;
     PIXEL_PORT->BSRRL = PIXEL_PIN;
+    uint32_t start = DWT->CYCCNT;
     pixel_wait_cycles(start, high_cycles);
     PIXEL_PORT->BSRRH = PIXEL_PIN;
     pixel_wait_cycles(start, pixel_bit_cycles);
@@ -306,17 +306,8 @@ static void pixel_fade_channel_down(uint8_t channel, uint8_t maximum)
 
 static void pixel_demo_once(void)
 {
-    /* Continuous SK6812 RGBW diagnostic; each state is latched for 3 s. */
-    for (;;) {
-        pixel_show(PIXEL_TEST_LEVEL, 0u, 0u, 0u);
-        HAL_Delay(3000u);
-        pixel_show(0u, PIXEL_TEST_LEVEL, 0u, 0u);
-        HAL_Delay(3000u);
-        pixel_show(0u, 0u, PIXEL_TEST_LEVEL, 0u);
-        HAL_Delay(3000u);
-        pixel_show(0u, 0u, 0u, PIXEL_TEST_LEVEL);
-        HAL_Delay(3000u);
-    }
+    /* SK6812 latches one frame; leave the data line low afterward. */
+    pixel_show(PIXEL_TEST_LEVEL, 0u, 0u, 0u);
 }
 
 void SysTick_Handler(void)
