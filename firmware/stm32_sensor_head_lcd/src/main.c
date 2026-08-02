@@ -243,10 +243,59 @@ static void pixel_show_channel(uint8_t channel, uint8_t level)
     }
 }
 
+static void pixel_show_channel_u16(uint8_t channel, uint16_t level,
+                                   uint32_t *fraction_accumulator)
+{
+    uint32_t scaled = (uint32_t)level * 255u;
+    uint8_t output = (uint8_t)(scaled / 65535u);
+    uint32_t fraction = scaled % 65535u;
+    uint32_t accumulated = *fraction_accumulator + fraction;
+
+    if (accumulated >= 65535u) {
+        accumulated -= 65535u;
+        if (output < 255u) {
+            ++output;
+        }
+    }
+
+    *fraction_accumulator = accumulated;
+    pixel_show_channel(channel, output);
+}
+
 static void pixel_demo_once(void)
 {
-    /* A single latched frame: remain pure green until reset or a new command. */
-    pixel_show(0u, PIXEL_TEST_LEVEL, 0u, 0u);
+    uint8_t channel;
+
+    /* Identify the four physical dies with long, steady color holds. */
+    for (channel = 0u; channel < 4u; ++channel) {
+        pixel_show_channel(channel, PIXEL_TEST_LEVEL);
+        HAL_Delay(900u);
+        pixel_show(0u, 0u, 0u, 0u);
+        HAL_Delay(150u);
+    }
+
+    /*
+     * SK6812 is natively 8-bit. A 16-bit command is converted to an 8-bit
+     * frame with temporal error accumulation, providing a 16-bit average
+     * brightness target while preserving the native wire protocol.
+     */
+    for (channel = 0u; channel < 4u; ++channel) {
+        const uint32_t frames = 3000u;
+        uint32_t frame;
+        uint32_t fraction_accumulator = 0u;
+
+        for (frame = 0u; frame < frames; ++frame) {
+            uint16_t level = (uint16_t)(((uint64_t)frame * 65535u) /
+                                        (frames - 1u));
+            pixel_show_channel_u16(channel, level, &fraction_accumulator);
+            delay_us(650u);
+        }
+        HAL_Delay(500u);
+        pixel_show(0u, 0u, 0u, 0u);
+        HAL_Delay(200u);
+    }
+
+    pixel_show(0u, 0u, 0u, 0u);
 }
 
 void SysTick_Handler(void)
@@ -1215,9 +1264,9 @@ int main(void)
     /* Initialize PA3 last so no board peripheral can alter the data pin. */
     pixel_gpio_init();
     pixel_timing_init();
-    pixel_demo_once();
 
     draw_startup();
+    pixel_demo_once();
     i2c_select_working_bus();
     scan_i2c(scan, sizeof(scan));
 
