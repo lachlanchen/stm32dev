@@ -210,14 +210,26 @@ static void pixel_write_byte(uint8_t value)
 
 static void pixel_show(uint8_t red, uint8_t green, uint8_t blue, uint8_t white)
 {
+    uint16_t mixed;
+    uint8_t wire_red;
+    uint8_t wire_green;
+    uint8_t wire_blue;
     uint32_t primask = __get_PRIMASK();
+
+    /* WS2812B has RGB only; logical white is synthesized with equal RGB. */
+    mixed = (uint16_t)red + white;
+    wire_red = (uint8_t)((mixed > 255u) ? 255u : mixed);
+    mixed = (uint16_t)green + white;
+    wire_green = (uint8_t)((mixed > 255u) ? 255u : mixed);
+    mixed = (uint16_t)blue + white;
+    wire_blue = (uint8_t)((mixed > 255u) ? 255u : mixed);
+
     __disable_irq();
 
-    /* Empirical mapping: this installed 32-bit RGBW pixel uses R,G,B,W. */
-    pixel_write_byte(red);
-    pixel_write_byte(green);
-    pixel_write_byte(blue);
-    pixel_write_byte(white);
+    /* Exact WS2812B wire protocol: 24 bits in GRB order. */
+    pixel_write_byte(wire_green);
+    pixel_write_byte(wire_red);
+    pixel_write_byte(wire_blue);
     PIXEL_PORT->BSRRH = PIXEL_PIN;
     if (primask == 0u) {
         __enable_irq();
@@ -308,7 +320,7 @@ static void pixel_demo_once(void)
 {
     uint16_t refresh;
 
-    /* Repeat during startup so a recently reconnected pixel catches a frame. */
+    /* Repeat during startup so a recently reconnected WS2812B catches a frame. */
     for (refresh = 0u; refresh < 250u; ++refresh) {
         pixel_show(PIXEL_TEST_LEVEL, 0u, 0u, 0u);
         HAL_Delay(20u);
