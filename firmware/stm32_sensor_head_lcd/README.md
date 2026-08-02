@@ -35,10 +35,10 @@ Lamp and addressable-pixel outputs:
 The pixel uses an external regulated 5 V supply. Never connect it to the 12 V
 tungsten supply. A 5 V AHCT data buffer is recommended; direct 3.3 V data may
 work for a short test but is not guaranteed. The current diagnostic firmware
-uses the only frame format empirically observed to light this specimen: 32-bit
-`GRBW`. It retransmits a low-level red frame every 20 ms indefinitely so a
-loose GND or DI wire can be reconnected without resetting the MCU. This mode is
-for wiring/protocol diagnosis and intentionally pauses later sensor startup.
+continuously transmits the standard WS2812B 24-bit `GRB` red frame every 20 ms,
+using approximately 350 ns `T0H`, 700 ns `T1H`, and a 300 us reset interval.
+A loose GND or DI wire can be reconnected without resetting the MCU. This mode
+is for wiring/protocol diagnosis and intentionally pauses later sensor startup.
 The PA3 waveform is emitted as a short GPIO/DWT transaction, so TIM2 continues
 running the tungsten-lamp PWM while pixel data is sent.
 

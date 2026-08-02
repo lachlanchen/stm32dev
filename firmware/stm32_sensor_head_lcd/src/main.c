@@ -48,8 +48,8 @@
 #define PIXEL_PORT           GPIOA
 #define PIXEL_PIN            GPIO_PIN_3
 #define PIXEL_DATA_HZ        800000u
-#define PIXEL_T0H_NS         300u
-#define PIXEL_T1H_NS         600u
+#define PIXEL_T0H_NS         350u
+#define PIXEL_T1H_NS         700u
 #define PIXEL_RESET_US       300u
 #define PIXEL_TEST_LEVEL     96u
 
@@ -213,11 +213,10 @@ static void pixel_show(uint8_t red, uint8_t green, uint8_t blue, uint8_t white)
     uint32_t primask = __get_PRIMASK();
     __disable_irq();
 
-    /* Diagnostic mode uses the only frame format verified on this specimen. */
+    /* Standard WS2812B wire format: exactly 24 bits in GRB order. */
     pixel_write_byte(green);
     pixel_write_byte(red);
     pixel_write_byte(blue);
-    pixel_write_byte(white);
     PIXEL_PORT->BSRRH = PIXEL_PIN;
     if (primask == 0u) {
         __enable_irq();
@@ -306,7 +305,7 @@ static void pixel_fade_channel_down(uint8_t channel, uint8_t maximum)
 
 static void pixel_demo_once(void)
 {
-    /* Keep retransmitting a red frame forever. */
+    /* Keep retransmitting a standard WS2812B red frame forever. */
     for (;;) {
         pixel_show(PIXEL_TEST_LEVEL, 0u, 0u, 0u);
         HAL_Delay(20u);
