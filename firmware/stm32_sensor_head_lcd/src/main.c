@@ -210,14 +210,26 @@ static void pixel_write_byte(uint8_t value)
 
 static void pixel_show(uint8_t red, uint8_t green, uint8_t blue, uint8_t white)
 {
+    uint16_t mixed;
+    uint8_t wire_red;
+    uint8_t wire_green;
+    uint8_t wire_blue;
     uint32_t primask = __get_PRIMASK();
+
+    /* WS2812B has no white die. Treat logical white as equal RGB addition. */
+    mixed = (uint16_t)red + white;
+    wire_red = (uint8_t)((mixed > 255u) ? 255u : mixed);
+    mixed = (uint16_t)green + white;
+    wire_green = (uint8_t)((mixed > 255u) ? 255u : mixed);
+    mixed = (uint16_t)blue + white;
+    wire_blue = (uint8_t)((mixed > 255u) ? 255u : mixed);
+
     __disable_irq();
 
-    /* GRB is native WS2812B order. The trailing W byte also supports SK6812RGBW. */
-    pixel_write_byte(green);
-    pixel_write_byte(red);
-    pixel_write_byte(blue);
-    pixel_write_byte(white);
+    /* Exact WS2812B wire format: 24 bits in GRB byte order. */
+    pixel_write_byte(wire_green);
+    pixel_write_byte(wire_red);
+    pixel_write_byte(wire_blue);
     PIXEL_PORT->BSRRH = PIXEL_PIN;
     if (primask == 0u) {
         __enable_irq();
@@ -275,7 +287,7 @@ static void pixel_demo_once(void)
     }
 
     /*
-     * SK6812 is natively 8-bit. A 16-bit command is converted to an 8-bit
+     * WS2812B is natively 8-bit. A 16-bit command is converted to an 8-bit
      * frame with temporal error accumulation, providing a 16-bit average
      * brightness target while preserving the native wire protocol.
      */
