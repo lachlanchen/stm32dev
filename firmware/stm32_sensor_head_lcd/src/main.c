@@ -213,9 +213,9 @@ static void pixel_show(uint8_t red, uint8_t green, uint8_t blue, uint8_t white)
     uint32_t primask = __get_PRIMASK();
     __disable_irq();
 
-    /* This installed pixel empirically requires the 32-bit GRBW frame. */
-    pixel_write_byte(green);
+    /* Empirical mapping: this installed 32-bit RGBW pixel uses R,G,B,W. */
     pixel_write_byte(red);
+    pixel_write_byte(green);
     pixel_write_byte(blue);
     pixel_write_byte(white);
     PIXEL_PORT->BSRRH = PIXEL_PIN;
@@ -306,7 +306,13 @@ static void pixel_fade_channel_down(uint8_t channel, uint8_t maximum)
 
 static void pixel_demo_once(void)
 {
-    /* Single empirically verified GRBW frame; remain red indefinitely. */
+    uint16_t refresh;
+
+    /* Repeat during startup so a recently reconnected pixel catches a frame. */
+    for (refresh = 0u; refresh < 250u; ++refresh) {
+        pixel_show(PIXEL_TEST_LEVEL, 0u, 0u, 0u);
+        HAL_Delay(20u);
+    }
     pixel_show(PIXEL_TEST_LEVEL, 0u, 0u, 0u);
 }
 

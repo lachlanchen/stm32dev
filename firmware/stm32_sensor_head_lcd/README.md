@@ -34,10 +34,11 @@ Lamp and addressable-pixel outputs:
 
 The pixel uses an external regulated 5 V supply. Never connect it to the 12 V
 tungsten supply. A 5 V AHCT data buffer is recommended; direct 3.3 V data may
-work for a short test but is not guaranteed. At startup, the integrated app
-sends one empirically verified 32-bit `GRBW` frame and leaves a low-level red
-state latched continuously. It accepts `R`, `G`, `B`, `W`, and `K` (off) over
-USART1 afterward.
+work for a short test but is not guaranteed. The installed pixel was
+empirically mapped as a 32-bit `RGBW` device: the earlier `GRBW` mapping turned
+a requested red state green. At startup, the app refreshes red for five seconds
+and then leaves it latched continuously. It accepts `R`, `G`, `B`, `W`, and `K`
+(off) over USART1 afterward.
 The PA3 waveform is emitted as a short GPIO/DWT transaction, so TIM2 continues
 running the tungsten-lamp PWM while pixel data is sent.
 
