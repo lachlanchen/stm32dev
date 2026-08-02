@@ -8,10 +8,9 @@ This independent bare-metal image targets the newly detected Cortex-M3 board:
 - debugger: Telesky ST-Link/V2, USB `0483:3748`
 
 It controls two daisy-chained pixels. LED1 is the first device connected to
-`PA0`; LED2 receives LED1's `DO`. Every three seconds, LED1 advances through
-`R, G, B, W, OFF`, while LED2 follows the shifted sequence `G, B, W, OFF, R`.
-Both pixels latch each new state together, and the five-state diagnostic repeats
-continuously. Intensity remains limited to `48/255`.
+`PA0`; LED2 receives LED1's `DO`. Both pixels synchronously advance through
+`R, G, B, W`, holding each color for three seconds and repeating continuously.
+Intensity remains limited to `48/255`.
 
 ## Wiring
 
@@ -36,5 +35,6 @@ make -C firmware\stm32f103_sk6812_rgbw
 make -C firmware\stm32f103_sk6812_rgbw flash
 ```
 
-The flash command filters for USB PID `3748`, so it does not select the old
-H743 board's onboard ST-Link/V2-1 (`374B`).
+The flash command filters for USB PID `3748` and the detected SWD-DP ID
+`0x1ba01477`, so it does not select or modify the H743 board's onboard
+ST-Link/V2-1 (`374B`).

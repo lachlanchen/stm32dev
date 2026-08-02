@@ -32,7 +32,7 @@ $(BUILD)/startup_stm32f103.o: src/startup_stm32f103.s
 	$(CC) $(ASFLAGS) -c $< -o $@
 
 flash: all
-	openocd -f interface/stlink.cfg -c "hla_vid_pid 0x0483 0x3748" -f target/stm32f1x.cfg -c "adapter speed 1000" -c "program $(BUILD)/$(PROJECT).elf verify reset exit"
+	openocd -f interface/stlink.cfg -c "hla_vid_pid 0x0483 0x3748" -c "set CPUTAPID 0x1ba01477" -f target/stm32f1x.cfg -c "adapter speed 500" -c "program $(BUILD)/$(PROJECT).elf verify reset exit"
 
 clean:
 	powershell -NoProfile -Command "Remove-Item -Recurse -Force '$(BUILD)' -ErrorAction SilentlyContinue"

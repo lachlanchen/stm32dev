@@ -142,7 +142,6 @@ static void show_two(Pixel led1, Pixel led2)
 
 int main(void)
 {
-    static const Pixel off   = {0u, 0u, 0u, 0u};
     static const Pixel red   = {TEST_LEVEL, 0u, 0u, 0u};
     static const Pixel green = {0u, TEST_LEVEL, 0u, 0u};
     static const Pixel blue  = {0u, 0u, TEST_LEVEL, 0u};
@@ -152,19 +151,14 @@ int main(void)
     pa0_init();
     dwt_init();
 
-    show_two(off, off);
-    delay_ms(500u);
-
     for (;;) {
-        show_two(red, green);
+        show_two(red, red);
         delay_ms(3000u);
-        show_two(green, blue);
+        show_two(green, green);
         delay_ms(3000u);
-        show_two(blue, white);
+        show_two(blue, blue);
         delay_ms(3000u);
-        show_two(white, off);
-        delay_ms(3000u);
-        show_two(off, red);
+        show_two(white, white);
         delay_ms(3000u);
     }
 }
