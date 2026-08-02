@@ -306,29 +306,8 @@ static void pixel_fade_channel_down(uint8_t channel, uint8_t maximum)
 
 static void pixel_demo_once(void)
 {
-    const uint8_t level = PIXEL_TEST_LEVEL;
-    uint8_t channel;
-
-    /* Smooth visible hue order: red, yellow, green, cyan, blue, white. */
-    pixel_show(level, 0u, 0u, 0u);
-    HAL_Delay(500u);
-    pixel_fade_rgb(level, 0u, 0u, level, level, 0u);
-    pixel_fade_rgb(level, level, 0u, 0u, level, 0u);
-    pixel_fade_rgb(0u, level, 0u, 0u, level, level);
-    pixel_fade_rgb(0u, level, level, 0u, 0u, level);
-    pixel_fade_blue_to_white(level);
-    HAL_Delay(600u);
-
-    /* Independently fade R, G, B and W from bright to dark. */
-    for (channel = 0u; channel < 4u; ++channel) {
-        pixel_show_channel(channel, level);
-        HAL_Delay(350u);
-        pixel_fade_channel_down(channel, level);
-        HAL_Delay(150u);
-    }
-
-    /* A persistent green endpoint proves that the test completed. */
-    pixel_show(0u, level, 0u, 0u);
+    /* Single empirically verified GRBW frame; remain red indefinitely. */
+    pixel_show(PIXEL_TEST_LEVEL, 0u, 0u, 0u);
 }
 
 void SysTick_Handler(void)
