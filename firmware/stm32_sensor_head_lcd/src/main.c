@@ -245,8 +245,8 @@ static void pixel_show_channel(uint8_t channel, uint8_t level)
 
 static void pixel_demo_once(void)
 {
-    /* A single latched frame: remain pure red until reset or a new command. */
-    pixel_show(PIXEL_TEST_LEVEL, 0u, 0u, 0u);
+    /* A single latched frame: remain pure green until reset or a new command. */
+    pixel_show(0u, PIXEL_TEST_LEVEL, 0u, 0u);
 }
 
 void SysTick_Handler(void)
