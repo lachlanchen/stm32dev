@@ -35,10 +35,10 @@ Lamp and addressable-pixel outputs:
 The pixel uses an external regulated 5 V supply. Never connect it to the 12 V
 tungsten supply. A 5 V AHCT data buffer is recommended; direct 3.3 V data may
 work for a short test but is not guaranteed. The current diagnostic firmware
-continuously transmits an SK6812 RGBW 32-bit `GRBW` red frame every 20 ms, using
-approximately 300 ns `T0H`, 600 ns `T1H`, and a 300 us reset interval. A loose
-GND or DI wire can be reconnected without resetting the MCU. This mode is for
-wiring/protocol diagnosis and intentionally pauses later sensor startup.
+transmits one SK6812 RGBW 32-bit `GRBW` red frame, using approximately 300 ns
+`T0H`, 600 ns `T1H`, and a 300 us reset interval, then leaves the data line low.
+SK6812 retains the latched color without periodic refresh. Reset the MCU after
+reconnecting a loose GND or DI wire.
 The PA3 waveform is emitted as a short GPIO/DWT transaction, so TIM2 continues
 running the tungsten-lamp PWM while pixel data is sent.
 

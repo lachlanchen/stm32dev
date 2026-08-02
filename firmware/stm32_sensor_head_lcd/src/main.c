@@ -306,11 +306,8 @@ static void pixel_fade_channel_down(uint8_t channel, uint8_t maximum)
 
 static void pixel_demo_once(void)
 {
-    /* Keep retransmitting a standard SK6812 RGBW red frame forever. */
-    for (;;) {
-        pixel_show(PIXEL_TEST_LEVEL, 0u, 0u, 0u);
-        HAL_Delay(20u);
-    }
+    /* SK6812 latches one frame; leave the data line low afterward. */
+    pixel_show(PIXEL_TEST_LEVEL, 0u, 0u, 0u);
 }
 
 void SysTick_Handler(void)
