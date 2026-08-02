@@ -8,9 +8,9 @@ This independent bare-metal image targets the newly detected Cortex-M3 board:
 - debugger: Telesky ST-Link/V2, USB `0483:3748`
 
 It controls two daisy-chained pixels. LED1 is the first device connected to
-`PA0`; LED2 receives LED1's `DO`. Both pixels synchronously advance through
-`R, G, B, W`, holding each color for three seconds and repeating continuously.
-Intensity remains limited to `48/255`.
+`PA0`; LED2 receives LED1's `DO`. The current wiring diagnostic holds LED1 red
+and LED2 green, retransmitting both 32-bit frames every 20 ms so reconnecting a
+loose wire takes effect immediately. Intensity remains limited to `48/255`.
 
 ## Wiring
 

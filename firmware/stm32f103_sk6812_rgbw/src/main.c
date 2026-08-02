@@ -144,21 +144,12 @@ int main(void)
 {
     static const Pixel red   = {TEST_LEVEL, 0u, 0u, 0u};
     static const Pixel green = {0u, TEST_LEVEL, 0u, 0u};
-    static const Pixel blue  = {0u, 0u, TEST_LEVEL, 0u};
-    static const Pixel white = {0u, 0u, 0u, TEST_LEVEL};
-
     clock_init_64mhz();
     pa0_init();
     dwt_init();
 
     for (;;) {
-        show_two(red, red);
-        delay_ms(3000u);
-        show_two(green, green);
-        delay_ms(3000u);
-        show_two(blue, blue);
-        delay_ms(3000u);
-        show_two(white, white);
-        delay_ms(3000u);
+        show_two(red, green);
+        delay_ms(20u);
     }
 }
