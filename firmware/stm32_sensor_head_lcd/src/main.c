@@ -245,27 +245,8 @@ static void pixel_show_channel(uint8_t channel, uint8_t level)
 
 static void pixel_demo_once(void)
 {
-    uint8_t channel;
-
-    /* First identify R, G, B and the independent white die. */
-    for (channel = 0u; channel < 4u; ++channel) {
-        pixel_show_channel(channel, PIXEL_TEST_LEVEL);
-        HAL_Delay(900u);
-        pixel_show(0u, 0u, 0u, 0u);
-        HAL_Delay(150u);
-    }
-
-    /* Then fade each die smoothly from bright to dark. */
-    for (channel = 0u; channel < 4u; ++channel) {
-        int16_t level;
-        for (level = (int16_t)PIXEL_TEST_LEVEL; level >= 0; --level) {
-            pixel_show_channel(channel, (uint8_t)level);
-            HAL_Delay(12u);
-        }
-        HAL_Delay(150u);
-    }
-
-    pixel_show(0u, 0u, 0u, 0u);
+    /* A single latched frame: remain pure red until reset or a new command. */
+    pixel_show(PIXEL_TEST_LEVEL, 0u, 0u, 0u);
 }
 
 void SysTick_Handler(void)
