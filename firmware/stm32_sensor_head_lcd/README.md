@@ -24,6 +24,21 @@ Wiring:
 | `B9 / PB9` | AS7343 SDA, TSL2591 SDA |
 | open | AS7343 GPIO/INT, TSL2591 INT |
 
+Lamp and addressable-pixel outputs:
+
+| STM32 | Device |
+|---|---|
+| `A2 / PA2` | 12 V tungsten MOS PWM input |
+| `A3 / PA3` | Single WS2812B `DIN` through a 220-470 ohm series resistor |
+| `GND` | Shared STM32, 5 V pixel supply, and MOS logic ground |
+
+The pixel uses an external regulated 5 V supply. Never connect it to the 12 V
+tungsten supply. A 5 V AHCT data buffer is recommended; direct 3.3 V data may
+work for a short test but is not guaranteed. The integrated app starts with a
+low-level red pixel and accepts `R`, `G`, `B`, `W`, and `K` (off) over USART1.
+The PA3 waveform is emitted as a short GPIO/DWT transaction, so TIM2 continues
+running the tungsten-lamp PWM while pixel data is sent.
+
 The current AS7343 code uses register-level 18-channel auto-SMUX mode copied from the proven Arduino `as7343_uno_chunked` workflow.
 
 ## Read-only NAND solder diagnostic

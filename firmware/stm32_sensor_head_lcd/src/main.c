@@ -45,6 +45,14 @@
 #define LAMP_TEST_GAP_MS     800u
 #define INA219_SHUNT_MOHM    100u
 
+#define PIXEL_PORT           GPIOA
+#define PIXEL_PIN            GPIO_PIN_3
+#define PIXEL_DATA_HZ        800000u
+#define PIXEL_T0H_NS         300u
+#define PIXEL_T1H_NS         600u
+#define PIXEL_RESET_US       100u
+#define PIXEL_TEST_LEVEL     32u
+
 #define UI_BG                0x0841u
 #define UI_PANEL             0x18E3u
 #define UI_GRID              0x39E7u
@@ -108,6 +116,9 @@ static uint8_t tsl_gain_code = 0x30;
 static uint8_t as_gain_code = 10;
 static uint32_t as_sample_count = 0;
 static uint32_t tsl_sample_count = 0;
+static uint32_t pixel_bit_cycles = 0;
+static uint32_t pixel_t0h_cycles = 0;
+static uint32_t pixel_t1h_cycles = 0;
 
 typedef struct {
     uint32_t t_ms;
@@ -146,6 +157,72 @@ static void capture_log_init_metadata(void)
     capture_log_write = 0;
     capture_log_clean_dcache((const void *)&capture_log_magic, 16u);
     capture_log_clean_dcache((const void *)&capture_log_write, sizeof(capture_log_write));
+}
+
+static void pixel_gpio_init(void)
+{
+    __HAL_RCC_GPIOA_CLK_ENABLE();
+
+    GPIO_InitTypeDef gpio = {0};
+    gpio.Pin = PIXEL_PIN;
+    gpio.Mode = GPIO_MODE_OUTPUT_PP;
+    gpio.Pull = GPIO_PULLDOWN;
+    gpio.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+    HAL_GPIO_Init(PIXEL_PORT, &gpio);
+    PIXEL_PORT->BSRRH = PIXEL_PIN;
+}
+
+static void pixel_timing_init(void)
+{
+    uint32_t hclk = HAL_RCC_GetHCLKFreq();
+
+    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+    DWT->CYCCNT = 0u;
+    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+    pixel_bit_cycles = hclk / PIXEL_DATA_HZ;
+    pixel_t0h_cycles = (uint32_t)(((uint64_t)hclk * PIXEL_T0H_NS) / 1000000000ull);
+    pixel_t1h_cycles = (uint32_t)(((uint64_t)hclk * PIXEL_T1H_NS) / 1000000000ull);
+}
+
+static inline void pixel_wait_cycles(uint32_t start, uint32_t count)
+{
+    while ((uint32_t)(DWT->CYCCNT - start) < count) {
+        __NOP();
+    }
+}
+
+static inline void pixel_write_bit(uint8_t one)
+{
+    uint32_t high_cycles = one ? pixel_t1h_cycles : pixel_t0h_cycles;
+    PIXEL_PORT->BSRRL = PIXEL_PIN;
+    uint32_t start = DWT->CYCCNT;
+    pixel_wait_cycles(start, high_cycles);
+    PIXEL_PORT->BSRRH = PIXEL_PIN;
+    pixel_wait_cycles(start, pixel_bit_cycles);
+}
+
+static void pixel_write_byte(uint8_t value)
+{
+    for (uint8_t mask = 0x80u; mask != 0u; mask >>= 1u) {
+        pixel_write_bit((value & mask) != 0u);
+    }
+}
+
+static void pixel_show(uint8_t red, uint8_t green, uint8_t blue, uint8_t white)
+{
+    uint32_t primask = __get_PRIMASK();
+    __disable_irq();
+
+    /* GRB is native WS2812B order. The trailing W byte also supports SK6812RGBW. */
+    pixel_write_byte(green);
+    pixel_write_byte(red);
+    pixel_write_byte(blue);
+    pixel_write_byte(white);
+    PIXEL_PORT->BSRRH = PIXEL_PIN;
+    if (primask == 0u) {
+        __enable_irq();
+    }
+    delay_us(PIXEL_RESET_US);
 }
 
 void SysTick_Handler(void)
@@ -1013,8 +1090,8 @@ static void print_csv_header(void)
 {
     printf("# STM32H743 sensor head\r\n");
     printf("# AS7343 addr=0x39 TSL2591 addr=0x29 INA219=0x40/0x41 I2C PB8/PB9\r\n");
-    printf("# PA0/A0=lamp1 PWM TIM2_CH1 PA1/A1=lamp2 PWM TIM2_CH2\r\n");
-    printf("# serial commands: s scale, T one-shot lamp test, X/0 all off\r\n");
+    printf("# PA0/A0=lamp1 PWM TIM2_CH1 PA1/A1=lamp2 PWM TIM2_CH2 PA3/A3=WS2812B data\r\n");
+    printf("# serial commands: s scale, T lamp test, X/0 lamps off, R/G/B/W pixel, K pixel off\r\n");
     printf("# sensor gain is fixed; firmware auto-gain is disabled\r\n");
     printf("t_ms,seq,pwm1,pwm2,lamp_stage,ok_mon1,bus1_mV,current1_mA,power1_mW,ok_mon2,bus2_mV,current2_mA,power2_mW,total_mW,ok_tsl,tsl_ch0,tsl_ch1,tsl_visible,tsl_gain,tsl_full_norm,tsl_visible_norm,tsl_samples,ok_as7343,status2,as_gain,as_samples,ch0,ch1,ch2,ch3,ch4,ch5,ch6,ch7,ch8,ch9,ch10,ch11,ch12,ch13,ch14,ch15,ch16,ch17,sum_display\r\n");
 }
@@ -1033,6 +1110,21 @@ static bool poll_serial_commands(void)
             lamp_test_start(now);
         } else if (c == 'x' || c == 'X' || c == '0') {
             lamp_all_off();
+        } else if (c == 'r' || c == 'R') {
+            pixel_show(PIXEL_TEST_LEVEL, 0u, 0u, 0u);
+            printf("# pixel=RED level=%u\r\n", PIXEL_TEST_LEVEL);
+        } else if (c == 'g' || c == 'G') {
+            pixel_show(0u, PIXEL_TEST_LEVEL, 0u, 0u);
+            printf("# pixel=GREEN level=%u\r\n", PIXEL_TEST_LEVEL);
+        } else if (c == 'b' || c == 'B') {
+            pixel_show(0u, 0u, PIXEL_TEST_LEVEL, 0u);
+            printf("# pixel=BLUE level=%u\r\n", PIXEL_TEST_LEVEL);
+        } else if (c == 'w' || c == 'W') {
+            pixel_show(PIXEL_TEST_LEVEL, PIXEL_TEST_LEVEL, PIXEL_TEST_LEVEL, 0u);
+            printf("# pixel=WHITE level=%u\r\n", PIXEL_TEST_LEVEL);
+        } else if (c == 'k' || c == 'K') {
+            pixel_show(0u, 0u, 0u, 0u);
+            printf("# pixel=OFF\r\n");
         }
     }
     return changed;
@@ -1089,6 +1181,9 @@ int main(void)
     HAL_Init();
     Stm32_Clock_Init(160, 5, 2, 4); /* 400 MHz */
     delay_init(400);
+    pixel_gpio_init();
+    pixel_timing_init();
+    pixel_show(PIXEL_TEST_LEVEL, 0u, 0u, 0u);
     uart_init(115200);
     lamp_pwm_init();
     capture_log_init_metadata();
