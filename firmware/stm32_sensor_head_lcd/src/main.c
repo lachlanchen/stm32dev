@@ -264,38 +264,8 @@ static void pixel_show_channel_u16(uint8_t channel, uint16_t level,
 
 static void pixel_demo_once(void)
 {
-    uint8_t channel;
-
-    /* Identify the four physical dies with long, steady color holds. */
-    for (channel = 0u; channel < 4u; ++channel) {
-        pixel_show_channel(channel, PIXEL_TEST_LEVEL);
-        HAL_Delay(900u);
-        pixel_show(0u, 0u, 0u, 0u);
-        HAL_Delay(150u);
-    }
-
-    /*
-     * The RGBW pixel is natively 8-bit. A 16-bit command is converted to an 8-bit
-     * frame with temporal error accumulation, providing a 16-bit average
-     * brightness target while preserving the native wire protocol.
-     */
-    for (channel = 0u; channel < 4u; ++channel) {
-        const uint32_t frames = 3000u;
-        uint32_t frame;
-        uint32_t fraction_accumulator = 0u;
-
-        for (frame = 0u; frame < frames; ++frame) {
-            uint16_t level = (uint16_t)(((uint64_t)frame * 65535u) /
-                                        (frames - 1u));
-            pixel_show_channel_u16(channel, level, &fraction_accumulator);
-            delay_us(650u);
-        }
-        HAL_Delay(500u);
-        pixel_show(0u, 0u, 0u, 0u);
-        HAL_Delay(200u);
-    }
-
-    pixel_show(0u, 0u, 0u, 0u);
+    /* Restore the empirically verified state from commit 7c7991f. */
+    pixel_show(0u, PIXEL_TEST_LEVEL, 0u, 0u);
 }
 
 void SysTick_Handler(void)
