@@ -280,6 +280,19 @@ static void pixel_fade_rgb(uint8_t red_from, uint8_t green_from, uint8_t blue_fr
     }
 }
 
+static void pixel_fade_blue_to_white(uint8_t level)
+{
+    uint16_t step;
+
+    for (step = 0u; step <= 255u; ++step) {
+        uint32_t inverse = 255u - step;
+        uint8_t blue = (uint8_t)(((uint32_t)level * inverse) / 255u);
+        uint8_t white = (uint8_t)(((uint32_t)level * step) / 255u);
+        pixel_show(0u, 0u, blue, white);
+        HAL_Delay(16u);
+    }
+}
+
 static void pixel_demo_once(void)
 {
     const uint8_t level = PIXEL_TEST_LEVEL;
@@ -292,8 +305,12 @@ static void pixel_demo_once(void)
     pixel_fade_rgb(0u, level, 0u, 0u, level, level);
     pixel_fade_rgb(0u, level, level, 0u, 0u, level);
 
-    /* Leave the final blue endpoint latched continuously. */
     pixel_show(0u, 0u, level, 0u);
+    HAL_Delay(800u);
+    pixel_fade_blue_to_white(level);
+
+    /* Leave the independent white endpoint latched continuously. */
+    pixel_show(0u, 0u, 0u, level);
 }
 
 void SysTick_Handler(void)
