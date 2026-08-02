@@ -262,10 +262,38 @@ static void pixel_show_channel_u16(uint8_t channel, uint16_t level,
     pixel_show_channel(channel, output);
 }
 
+static void pixel_fade_rgb(uint8_t red_from, uint8_t green_from, uint8_t blue_from,
+                           uint8_t red_to, uint8_t green_to, uint8_t blue_to)
+{
+    uint16_t step;
+
+    for (step = 0u; step <= 255u; ++step) {
+        uint32_t inverse = 255u - step;
+        uint8_t red = (uint8_t)(((uint32_t)red_from * inverse +
+                                 (uint32_t)red_to * step) / 255u);
+        uint8_t green = (uint8_t)(((uint32_t)green_from * inverse +
+                                   (uint32_t)green_to * step) / 255u);
+        uint8_t blue = (uint8_t)(((uint32_t)blue_from * inverse +
+                                  (uint32_t)blue_to * step) / 255u);
+        pixel_show(red, green, blue, 0u);
+        HAL_Delay(16u);
+    }
+}
+
 static void pixel_demo_once(void)
 {
-    /* Restore the empirically verified state from commit 7c7991f. */
-    pixel_show(0u, PIXEL_TEST_LEVEL, 0u, 0u);
+    const uint8_t level = PIXEL_TEST_LEVEL;
+
+    /* Visible hue order from long to short wavelength: R, Y, G, C, B. */
+    pixel_show(level, 0u, 0u, 0u);
+    HAL_Delay(800u);
+    pixel_fade_rgb(level, 0u, 0u, level, level, 0u);
+    pixel_fade_rgb(level, level, 0u, 0u, level, 0u);
+    pixel_fade_rgb(0u, level, 0u, 0u, level, level);
+    pixel_fade_rgb(0u, level, level, 0u, 0u, level);
+
+    /* Leave the final blue endpoint latched continuously. */
+    pixel_show(0u, 0u, level, 0u);
 }
 
 void SysTick_Handler(void)
