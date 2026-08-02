@@ -39,12 +39,12 @@
 #define CPU_HZ                      64000000u
 #define SK6812_BIT_CYCLES           80u
 #define SK6812_T0H_CYCLES           19u
-#define SK6812_T1H_CYCLES           38u
+#define SK6812_T1H_CYCLES           39u
 #define SK6812_RESET_US             100u
 #define TEST_LEVEL                  48u
 
 /* Rev.01 data sheet order. Set to 1 if the physical part uses GRBW. */
-#define SK6812_USE_GRBW_ORDER       0u
+#define SK6812_USE_GRBW_ORDER       1u
 
 typedef struct {
     uint8_t r;
@@ -104,8 +104,8 @@ static void delay_ms(uint32_t ms)
 static inline void send_bit(uint8_t one)
 {
     uint32_t high_cycles = one ? SK6812_T1H_CYCLES : SK6812_T0H_CYCLES;
-    GPIOA_BSRR = PA0;
     uint32_t start = DWT_CYCCNT;
+    GPIOA_BSRR = PA0;
     while ((uint32_t)(DWT_CYCCNT - start) < high_cycles) {}
     GPIOA_BRR = PA0;
     while ((uint32_t)(DWT_CYCCNT - start) < SK6812_BIT_CYCLES) {}
@@ -144,12 +144,20 @@ int main(void)
 {
     static const Pixel red   = {TEST_LEVEL, 0u, 0u, 0u};
     static const Pixel green = {0u, TEST_LEVEL, 0u, 0u};
+    static const Pixel blue  = {0u, 0u, TEST_LEVEL, 0u};
+    static const Pixel white = {0u, 0u, 0u, TEST_LEVEL};
     clock_init_64mhz();
     pa0_init();
     dwt_init();
 
     for (;;) {
         show_two(red, green);
-        delay_ms(20u);
+        delay_ms(3000u);
+        show_two(green, blue);
+        delay_ms(3000u);
+        show_two(blue, white);
+        delay_ms(3000u);
+        show_two(white, red);
+        delay_ms(3000u);
     }
 }
