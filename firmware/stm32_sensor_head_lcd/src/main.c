@@ -210,26 +210,14 @@ static void pixel_write_byte(uint8_t value)
 
 static void pixel_show(uint8_t red, uint8_t green, uint8_t blue, uint8_t white)
 {
-    uint16_t mixed;
-    uint8_t wire_red;
-    uint8_t wire_green;
-    uint8_t wire_blue;
     uint32_t primask = __get_PRIMASK();
-
-    /* WS2812B has RGB only; logical white is synthesized with equal RGB. */
-    mixed = (uint16_t)red + white;
-    wire_red = (uint8_t)((mixed > 255u) ? 255u : mixed);
-    mixed = (uint16_t)green + white;
-    wire_green = (uint8_t)((mixed > 255u) ? 255u : mixed);
-    mixed = (uint16_t)blue + white;
-    wire_blue = (uint8_t)((mixed > 255u) ? 255u : mixed);
-
     __disable_irq();
 
-    /* Exact WS2812B wire protocol: 24 bits in GRB order. */
-    pixel_write_byte(wire_green);
-    pixel_write_byte(wire_red);
-    pixel_write_byte(wire_blue);
+    /* Diagnostic mode uses the only frame format verified on this specimen. */
+    pixel_write_byte(green);
+    pixel_write_byte(red);
+    pixel_write_byte(blue);
+    pixel_write_byte(white);
     PIXEL_PORT->BSRRH = PIXEL_PIN;
     if (primask == 0u) {
         __enable_irq();
@@ -318,14 +306,11 @@ static void pixel_fade_channel_down(uint8_t channel, uint8_t maximum)
 
 static void pixel_demo_once(void)
 {
-    uint16_t refresh;
-
-    /* Repeat during startup so a recently reconnected WS2812B catches a frame. */
-    for (refresh = 0u; refresh < 250u; ++refresh) {
+    /* Keep retransmitting a red frame forever. */
+    for (;;) {
         pixel_show(PIXEL_TEST_LEVEL, 0u, 0u, 0u);
         HAL_Delay(20u);
     }
-    pixel_show(PIXEL_TEST_LEVEL, 0u, 0u, 0u);
 }
 
 void SysTick_Handler(void)
