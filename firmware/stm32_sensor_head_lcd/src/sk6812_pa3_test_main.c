@@ -1,6 +1,5 @@
 #include "main.h"
 #include "sys.h"
-#include "delay.h"
 #include <stdint.h>
 
 /*
@@ -16,6 +15,7 @@
 #define PIXEL_RESET_US      300u
 #define PIXEL_LEVEL         64u
 #define COLOR_HOLD_MS       3000u
+#define CORE_CLOCK_HZ       400000000u
 
 static uint32_t bit_cycles;
 static uint32_t t0h_cycles;
@@ -48,24 +48,30 @@ static void pixel_gpio_init(void)
 
 static void pixel_timing_init(void)
 {
-    uint32_t core_hz;
-
     CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
     DWT->CYCCNT = 0u;
     DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
 
-    /* DWT CYCCNT follows the 400 MHz Cortex-M7 core clock, not HCLK. */
-    SystemCoreClockUpdate();
-    core_hz = SystemCoreClock;
-    bit_cycles = core_hz / PIXEL_DATA_HZ;
-    t0h_cycles = (uint32_t)(((uint64_t)core_hz * PIXEL_T0H_NS) / 1000000000ull);
-    t1h_cycles = (uint32_t)(((uint64_t)core_hz * PIXEL_T1H_NS) / 1000000000ull);
+    /* Stm32_Clock_Init below fixes the Cortex-M7/DWT clock at 400 MHz. */
+    bit_cycles = CORE_CLOCK_HZ / PIXEL_DATA_HZ;
+    t0h_cycles = (uint32_t)(((uint64_t)CORE_CLOCK_HZ * PIXEL_T0H_NS) / 1000000000ull);
+    t1h_cycles = (uint32_t)(((uint64_t)CORE_CLOCK_HZ * PIXEL_T1H_NS) / 1000000000ull);
 }
 
 static inline void wait_cycles(uint32_t start, uint32_t count)
 {
     while ((uint32_t)(DWT->CYCCNT - start) < count) {
         __NOP();
+    }
+}
+
+static void hold_ms(uint32_t milliseconds)
+{
+    while (milliseconds != 0u) {
+        uint32_t chunk_ms = milliseconds > 1000u ? 1000u : milliseconds;
+        uint32_t start = DWT->CYCCNT;
+        wait_cycles(start, (CORE_CLOCK_HZ / 1000u) * chunk_ms);
+        milliseconds -= chunk_ms;
     }
 }
 
@@ -101,7 +107,10 @@ static void pixel_show(uint8_t red, uint8_t green, uint8_t blue, uint8_t white)
     if (primask == 0u) {
         __enable_irq();
     }
-    delay_us(PIXEL_RESET_US);
+    {
+        uint32_t start = DWT->CYCCNT;
+        wait_cycles(start, (CORE_CLOCK_HZ / 1000000u) * PIXEL_RESET_US);
+    }
 }
 
 int main(void)
@@ -109,21 +118,20 @@ int main(void)
     Cache_Enable();
     HAL_Init();
     Stm32_Clock_Init(160u, 5u, 2u, 4u); /* 400 MHz Cortex-M7 core. */
-    delay_init(400u);
     pixel_gpio_init();
     pixel_timing_init();
 
     pixel_show(0u, 0u, 0u, 0u);
-    HAL_Delay(500u);
+    hold_ms(500u);
 
     while (1) {
         pixel_show(PIXEL_LEVEL, 0u, 0u, 0u);
-        HAL_Delay(COLOR_HOLD_MS);
+        hold_ms(COLOR_HOLD_MS);
         pixel_show(0u, PIXEL_LEVEL, 0u, 0u);
-        HAL_Delay(COLOR_HOLD_MS);
+        hold_ms(COLOR_HOLD_MS);
         pixel_show(0u, 0u, PIXEL_LEVEL, 0u);
-        HAL_Delay(COLOR_HOLD_MS);
+        hold_ms(COLOR_HOLD_MS);
         pixel_show(0u, 0u, 0u, PIXEL_LEVEL);
-        HAL_Delay(COLOR_HOLD_MS);
+        hold_ms(COLOR_HOLD_MS);
     }
 }

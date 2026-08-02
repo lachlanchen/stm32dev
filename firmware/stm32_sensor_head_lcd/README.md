@@ -134,9 +134,11 @@ decoupling, and connect first-pixel `DOUT` to second-pixel `DIN`. See the
 
 `src/sk6812_pa3_test_main.c` is a minimal image for one SK6812RGBW connected to
 `PA3/A3`. It loops through red, green, blue, and white, holding each color for
-three seconds. It uses the 400 MHz Cortex-M7 clock for DWT pulse timing and a
-32-bit `GRBW` frame. The normal LCD/sensor source remains separate and is not
-linked into this test image; the LCD is intentionally not initialized.
+three seconds. Both the color hold and the pixel waveform use fixed 400 MHz DWT
+timing, independent of the HAL tick. Each color frame is transmitted once and
+then remains latched. It uses a 32-bit `GRBW` frame. The normal LCD/sensor
+source remains separate and is not linked into this test image; the LCD is
+intentionally not initialized.
 
 ```powershell
 make -C firmware\stm32_sensor_head_lcd sk6812-pa3-test
