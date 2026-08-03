@@ -210,3 +210,30 @@ dedicated white die.
 make -C firmware\stm32_sensor_head_lcd ws2812b-pa3-smooth-demo
 make -C firmware\stm32_sensor_head_lcd flash-ws2812b-pa3-smooth-demo
 ```
+
+## Independent PA2 12 V tungsten smooth test
+
+`src/tungsten_pa2_smooth_test_main.c` drives the MOS PWM input from
+`PA2/A2 = TIM5_CH3`. TIM5 is separate from the PA3 pixel timer, so both can be
+integrated later without a shared-period conflict. The carrier is 443 Hz to
+stay below the YYNMOS-1 module's stated 500 Hz limit; a 16-bit duty command is
+mapped onto TIM5's 32-bit period.
+
+This is deliberately a single-run safety test:
+
+```text
+off 1.0 s
+25700/65535 -> 65535/65535 over 3.0 s
+65535/65535 -> 25700/65535 over 3.0 s
+25700/65535 -> 0 over 0.5 s
+off indefinitely for cooling
+```
+
+At startup it transmits 64 zero bits on PA3 to switch off two attached
+SK6812RGBW pixels, then holds PA3 low. It does not initialize the LCD or any
+sensor.
+
+```powershell
+make -C firmware\stm32_sensor_head_lcd tungsten-pa2-smooth-test
+make -C firmware\stm32_sensor_head_lcd flash-tungsten-pa2-smooth-test
+```
