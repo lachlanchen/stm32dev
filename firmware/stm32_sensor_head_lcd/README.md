@@ -150,3 +150,21 @@ Restore the unchanged LCD/sensor application with:
 ```powershell
 make -C firmware\stm32_sensor_head_lcd flash
 ```
+
+## Independent PA3 TIM2 hardware-waveform test
+
+`src/sk6812_pa3_timer_test_main.c` is the deterministic follow-up to the DWT
+bit-bang test. TIM2_CH4 drives `PA3/A3` with a 200 MHz timer: `ARR=249`, zero-bit
+high time `60` ticks, and one-bit high time `120` ticks. CCR4 preload removes
+software edge jitter. It sends identical `GRBW` frames to two daisy-chained
+pixels and holds red, green, blue, and white for three seconds each.
+
+```powershell
+make -C firmware\stm32_sensor_head_lcd sk6812-pa3-timer-test
+make -C firmware\stm32_sensor_head_lcd flash-sk6812-pa3-timer-test
+```
+
+Only one MCU output may drive the pixel data input. Disconnect the F103 PA0
+wire before attaching H7 PA3. If this hardware-timed image still flickers, the
+remaining fault is electrical: shared ground, loose DI, 5 V supply integrity,
+or the need for a `74AHCT125` 3.3-to-5 V data buffer.
