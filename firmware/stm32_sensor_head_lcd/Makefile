@@ -32,6 +32,10 @@ else ifeq ($(APP),tungsten_pa2_smooth_test)
 PROJECT := stm32_tungsten_pa2_smooth_test
 BUILD_DIR := build_tungsten_pa2_smooth_test
 APP_SRCS := src/tungsten_pa2_smooth_test_main.c
+else ifeq ($(APP),tungsten_pa2_full_diagnostic)
+PROJECT := stm32_tungsten_pa2_full_diagnostic
+BUILD_DIR := build_tungsten_pa2_full_diagnostic
+APP_SRCS := src/tungsten_pa2_full_diagnostic_main.c
 else
 PROJECT := stm32_sensor_head_lcd
 BUILD_DIR := build
@@ -95,7 +99,7 @@ SRCS := \
 
 OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(filter %.c,$(SRCS))) $(patsubst %.s,$(BUILD_DIR)/%.o,$(filter %.s,$(SRCS)))
 
-.PHONY: all clean flash nand-diag flash-nand-diag clean-nand-diag qspi-diag flash-qspi-diag clean-qspi-diag sk6812 flash-sk6812 clean-sk6812 sk6812-pa3-test flash-sk6812-pa3-test clean-sk6812-pa3-test sk6812-pa3-timer-test flash-sk6812-pa3-timer-test clean-sk6812-pa3-timer-test sk6812-pa3-smooth-demo flash-sk6812-pa3-smooth-demo clean-sk6812-pa3-smooth-demo ws2812b-pa3-smooth-demo flash-ws2812b-pa3-smooth-demo clean-ws2812b-pa3-smooth-demo tungsten-pa2-smooth-test flash-tungsten-pa2-smooth-test clean-tungsten-pa2-smooth-test
+.PHONY: all clean flash nand-diag flash-nand-diag clean-nand-diag qspi-diag flash-qspi-diag clean-qspi-diag sk6812 flash-sk6812 clean-sk6812 sk6812-pa3-test flash-sk6812-pa3-test clean-sk6812-pa3-test sk6812-pa3-timer-test flash-sk6812-pa3-timer-test clean-sk6812-pa3-timer-test sk6812-pa3-smooth-demo flash-sk6812-pa3-smooth-demo clean-sk6812-pa3-smooth-demo ws2812b-pa3-smooth-demo flash-ws2812b-pa3-smooth-demo clean-ws2812b-pa3-smooth-demo tungsten-pa2-smooth-test flash-tungsten-pa2-smooth-test clean-tungsten-pa2-smooth-test tungsten-pa2-full-diagnostic flash-tungsten-pa2-full-diagnostic clean-tungsten-pa2-full-diagnostic
 
 all: $(BUILD_DIR)/$(PROJECT).elf $(BUILD_DIR)/$(PROJECT).bin
 	$(SIZE) $(BUILD_DIR)/$(PROJECT).elf
@@ -188,6 +192,15 @@ flash-tungsten-pa2-smooth-test: tungsten-pa2-smooth-test
 
 clean-tungsten-pa2-smooth-test:
 	$(MAKE) APP=tungsten_pa2_smooth_test clean
+
+tungsten-pa2-full-diagnostic:
+	$(MAKE) APP=tungsten_pa2_full_diagnostic all
+
+flash-tungsten-pa2-full-diagnostic: tungsten-pa2-full-diagnostic
+	openocd -f interface/stlink.cfg -c "adapter serial 00710049572D430E4E4C3054" -f target/stm32h7x.cfg -c "adapter speed 1000" -c "program build_tungsten_pa2_full_diagnostic/stm32_tungsten_pa2_full_diagnostic.elf verify reset exit"
+
+clean-tungsten-pa2-full-diagnostic:
+	$(MAKE) APP=tungsten_pa2_full_diagnostic clean
 
 clean:
 	powershell -NoProfile -Command "Remove-Item -Recurse -Force '$(BUILD_DIR)' -ErrorAction SilentlyContinue"
