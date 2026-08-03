@@ -172,3 +172,23 @@ Only one MCU output may drive the pixel data input. Disconnect the F103 PA0
 wire before attaching H7 PA3. If this hardware-timed image still flickers, the
 remaining fault is electrical: shared ground, loose DI, 5 V supply integrity,
 or the need for a `74AHCT125` 3.3-to-5 V data buffer.
+
+## Independent PA3 1 kHz smooth-color demo
+
+`src/sk6812_pa3_smooth_demo_main.c` preserves the proven three-second test and
+uses the same TIM2_CH4 waveform plus active-low PA3 hold. It starts frames at
+1,000 Hz and runs four seamless 0.5-second phases:
+
+```text
+R -> yellow -> G -> cyan -> B
+B -> cyan -> G -> yellow -> R
+R -> W, with W 0..255 and complementary R 255..0
+W -> R, with W 255..0 and complementary R 0..255
+```
+
+The complete sequence repeats every two seconds for both daisy-chained pixels.
+
+```powershell
+make -C firmware\stm32_sensor_head_lcd sk6812-pa3-smooth-demo
+make -C firmware\stm32_sensor_head_lcd flash-sk6812-pa3-smooth-demo
+```
