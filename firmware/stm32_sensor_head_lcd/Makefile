@@ -60,6 +60,10 @@ else ifeq ($(APP),h7_optical_joint_scan_controller)
 PROJECT := stm32_h7_optical_joint_scan_controller
 BUILD_DIR := build_h7_optical_joint_scan_controller
 APP_SRCS := src/h7_optical_joint_scan_controller_main.c
+else ifeq ($(APP),h7_optical_joint_tsl_controller)
+PROJECT := stm32_h7_optical_joint_tsl_controller
+BUILD_DIR := build_h7_optical_joint_tsl_controller
+APP_SRCS := src/h7_optical_joint_tsl_controller_main.c
 else
 PROJECT := stm32_sensor_head_lcd
 BUILD_DIR := build
@@ -123,7 +127,7 @@ SRCS := \
 
 OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(filter %.c,$(SRCS))) $(patsubst %.s,$(BUILD_DIR)/%.o,$(filter %.s,$(SRCS)))
 
-.PHONY: all clean flash nand-diag flash-nand-diag clean-nand-diag qspi-diag flash-qspi-diag clean-qspi-diag sk6812 flash-sk6812 clean-sk6812 sk6812-pa3-test flash-sk6812-pa3-test clean-sk6812-pa3-test sk6812-pa3-timer-test flash-sk6812-pa3-timer-test clean-sk6812-pa3-timer-test sk6812-pa3-smooth-demo flash-sk6812-pa3-smooth-demo clean-sk6812-pa3-smooth-demo ws2812b-pa3-smooth-demo flash-ws2812b-pa3-smooth-demo clean-ws2812b-pa3-smooth-demo tungsten-pa2-smooth-test flash-tungsten-pa2-smooth-test clean-tungsten-pa2-smooth-test tungsten-pa2-full-diagnostic flash-tungsten-pa2-full-diagnostic clean-tungsten-pa2-full-diagnostic tungsten-pa2-6vrms-monitor flash-tungsten-pa2-6vrms-monitor clean-tungsten-pa2-6vrms-monitor tungsten-pa2-8vrms-pulse flash-tungsten-pa2-8vrms-pulse clean-tungsten-pa2-8vrms-pulse tungsten-pa2-10vrms-pulse flash-tungsten-pa2-10vrms-pulse clean-tungsten-pa2-10vrms-pulse tungsten-pa2-12vrms-pulse flash-tungsten-pa2-12vrms-pulse clean-tungsten-pa2-12vrms-pulse h7-optical-measurement-controller flash-h7-optical-measurement-controller clean-h7-optical-measurement-controller h7-optical-joint-scan-controller flash-h7-optical-joint-scan-controller clean-h7-optical-joint-scan-controller
+.PHONY: all clean flash nand-diag flash-nand-diag clean-nand-diag qspi-diag flash-qspi-diag clean-qspi-diag sk6812 flash-sk6812 clean-sk6812 sk6812-pa3-test flash-sk6812-pa3-test clean-sk6812-pa3-test sk6812-pa3-timer-test flash-sk6812-pa3-timer-test clean-sk6812-pa3-timer-test sk6812-pa3-smooth-demo flash-sk6812-pa3-smooth-demo clean-sk6812-pa3-smooth-demo ws2812b-pa3-smooth-demo flash-ws2812b-pa3-smooth-demo clean-ws2812b-pa3-smooth-demo tungsten-pa2-smooth-test flash-tungsten-pa2-smooth-test clean-tungsten-pa2-smooth-test tungsten-pa2-full-diagnostic flash-tungsten-pa2-full-diagnostic clean-tungsten-pa2-full-diagnostic tungsten-pa2-6vrms-monitor flash-tungsten-pa2-6vrms-monitor clean-tungsten-pa2-6vrms-monitor tungsten-pa2-8vrms-pulse flash-tungsten-pa2-8vrms-pulse clean-tungsten-pa2-8vrms-pulse tungsten-pa2-10vrms-pulse flash-tungsten-pa2-10vrms-pulse clean-tungsten-pa2-10vrms-pulse tungsten-pa2-12vrms-pulse flash-tungsten-pa2-12vrms-pulse clean-tungsten-pa2-12vrms-pulse h7-optical-measurement-controller flash-h7-optical-measurement-controller clean-h7-optical-measurement-controller h7-optical-joint-scan-controller flash-h7-optical-joint-scan-controller clean-h7-optical-joint-scan-controller h7-optical-joint-tsl-controller flash-h7-optical-joint-tsl-controller clean-h7-optical-joint-tsl-controller
 
 all: $(BUILD_DIR)/$(PROJECT).elf $(BUILD_DIR)/$(PROJECT).bin
 	$(SIZE) $(BUILD_DIR)/$(PROJECT).elf
@@ -279,6 +283,15 @@ flash-h7-optical-joint-scan-controller: h7-optical-joint-scan-controller
 
 clean-h7-optical-joint-scan-controller:
 	$(MAKE) APP=h7_optical_joint_scan_controller clean
+
+h7-optical-joint-tsl-controller:
+	$(MAKE) APP=h7_optical_joint_tsl_controller all
+
+flash-h7-optical-joint-tsl-controller: h7-optical-joint-tsl-controller
+	openocd -f interface/stlink.cfg -c "adapter serial 00710049572D430E4E4C3054" -f target/stm32h7x.cfg -c "adapter speed 1000" -c "program build_h7_optical_joint_tsl_controller/stm32_h7_optical_joint_tsl_controller.elf verify reset exit"
+
+clean-h7-optical-joint-tsl-controller:
+	$(MAKE) APP=h7_optical_joint_tsl_controller clean
 
 clean:
 	powershell -NoProfile -Command "Remove-Item -Recurse -Force '$(BUILD_DIR)' -ErrorAction SilentlyContinue"
