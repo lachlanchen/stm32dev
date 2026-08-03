@@ -1,0 +1,21 @@
+{
+  "date": "2026-08-03",
+  "controller": "STM32H743IIT6",
+  "output": "PA2 / TIM5_CH3 / YYNMOS-1",
+  "lamp": "6 V tungsten",
+  "source_measured_before_test_V": 12.5,
+  "pwm_frequency_Hz": 443,
+  "target_duty_16bit": 15099,
+  "target_duty_fraction": 0.2304,
+  "calculated_equivalent_rms_V": 6.0,
+  "monitor_addresses_present": ["0x40", "0x41", "0x42", "0x43"],
+  "active_monitor_channel": "third / 0x42",
+  "target_samples": 50,
+  "average_bus_register_V": 7.268,
+  "average_current_mA": 27,
+  "average_sample_derived_power_mW": 201,
+  "current_range_mA": [27, 29],
+  "sample_derived_power_range_mW": [183, 235],
+  "interpretation": "The INA219 bus register aliases the 0/12.5 V PWM waveform and is not a direct measurement of continuous lamp voltage. The 6.0 V value is the calculated RMS equivalent for an ideal resistive load; tungsten resistance changes with temperature.",
+  "final_state": "PA0, PA1, PA2 and PA3 off; PA2 remains at zero indefinitely"
+}
