@@ -1,0 +1,28 @@
+{
+  "experiment": "h7_pa2_10vrms_pulse",
+  "date": "2026-08-03",
+  "output_pin": "PA2",
+  "pwm_frequency_hz": 443,
+  "supply_assumed_mv": 12500,
+  "target_equivalent_rms_mv": 10000,
+  "duty_count": 41942,
+  "duty_full_scale": 65535,
+  "sequence": {
+    "off_before_ms": 1000,
+    "ramp_up_ms": 1500,
+    "hold_ms": 0,
+    "ramp_down_ms": 1500,
+    "off_after": true,
+    "completed": true
+  },
+  "ina219": {
+    "present_address_mask": "0x0f",
+    "active_address": "0x42",
+    "samples": 1,
+    "sampled_bus_voltage_mv": 6840,
+    "sampled_current_ma": 54,
+    "sampled_power_mw": 369,
+    "warning": "Bus voltage is an asynchronous PWM-aliased sample, not RMS voltage."
+  },
+  "safety": "Nominal 6 V lamp was briefly overdriven; PA2 automatically returned to 0% duty."
+}
