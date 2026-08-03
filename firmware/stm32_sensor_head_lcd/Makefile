@@ -24,6 +24,10 @@ else ifeq ($(APP),sk6812_pa3_smooth_demo)
 PROJECT := stm32_sk6812_pa3_smooth_demo
 BUILD_DIR := build_sk6812_pa3_smooth_demo
 APP_SRCS := src/sk6812_pa3_smooth_demo_main.c
+else ifeq ($(APP),ws2812b_pa3_smooth_demo)
+PROJECT := stm32_ws2812b_pa3_smooth_demo
+BUILD_DIR := build_ws2812b_pa3_smooth_demo
+APP_SRCS := src/ws2812b_pa3_smooth_demo_main.c
 else
 PROJECT := stm32_sensor_head_lcd
 BUILD_DIR := build
@@ -87,7 +91,7 @@ SRCS := \
 
 OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(filter %.c,$(SRCS))) $(patsubst %.s,$(BUILD_DIR)/%.o,$(filter %.s,$(SRCS)))
 
-.PHONY: all clean flash nand-diag flash-nand-diag clean-nand-diag qspi-diag flash-qspi-diag clean-qspi-diag sk6812 flash-sk6812 clean-sk6812 sk6812-pa3-test flash-sk6812-pa3-test clean-sk6812-pa3-test sk6812-pa3-timer-test flash-sk6812-pa3-timer-test clean-sk6812-pa3-timer-test sk6812-pa3-smooth-demo flash-sk6812-pa3-smooth-demo clean-sk6812-pa3-smooth-demo
+.PHONY: all clean flash nand-diag flash-nand-diag clean-nand-diag qspi-diag flash-qspi-diag clean-qspi-diag sk6812 flash-sk6812 clean-sk6812 sk6812-pa3-test flash-sk6812-pa3-test clean-sk6812-pa3-test sk6812-pa3-timer-test flash-sk6812-pa3-timer-test clean-sk6812-pa3-timer-test sk6812-pa3-smooth-demo flash-sk6812-pa3-smooth-demo clean-sk6812-pa3-smooth-demo ws2812b-pa3-smooth-demo flash-ws2812b-pa3-smooth-demo clean-ws2812b-pa3-smooth-demo
 
 all: $(BUILD_DIR)/$(PROJECT).elf $(BUILD_DIR)/$(PROJECT).bin
 	$(SIZE) $(BUILD_DIR)/$(PROJECT).elf
@@ -162,6 +166,15 @@ flash-sk6812-pa3-smooth-demo: sk6812-pa3-smooth-demo
 
 clean-sk6812-pa3-smooth-demo:
 	$(MAKE) APP=sk6812_pa3_smooth_demo clean
+
+ws2812b-pa3-smooth-demo:
+	$(MAKE) APP=ws2812b_pa3_smooth_demo all
+
+flash-ws2812b-pa3-smooth-demo: ws2812b-pa3-smooth-demo
+	openocd -f interface/stlink.cfg -c "adapter serial 00710049572D430E4E4C3054" -f target/stm32h7x.cfg -c "adapter speed 1000" -c "program build_ws2812b_pa3_smooth_demo/stm32_ws2812b_pa3_smooth_demo.elf verify reset exit"
+
+clean-ws2812b-pa3-smooth-demo:
+	$(MAKE) APP=ws2812b_pa3_smooth_demo clean
 
 clean:
 	powershell -NoProfile -Command "Remove-Item -Recurse -Force '$(BUILD_DIR)' -ErrorAction SilentlyContinue"

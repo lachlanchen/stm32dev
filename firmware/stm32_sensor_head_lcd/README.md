@@ -192,3 +192,21 @@ The complete sequence repeats every two seconds for both daisy-chained pixels.
 make -C firmware\stm32_sensor_head_lcd sk6812-pa3-smooth-demo
 make -C firmware\stm32_sensor_head_lcd flash-sk6812-pa3-smooth-demo
 ```
+
+## Independent PA3 WS2812B smooth-color demo
+
+`src/ws2812b_pa3_smooth_demo_main.c` is the WS2812B counterpart. It preserves
+the same proven TIM2_CH4 waveform, 1 kHz scheduler, and active-low PA3 hold, but
+uses the correct 24-bit `GRB` frame instead of the SK6812 32-bit `GRBW` frame.
+It supports one or two daisy-chained pixels; extra data is harmless when only
+one pixel is attached.
+
+The first two 0.5-second phases sweep `R -> B -> R` through the visible hue
+path. The next two phases synthesize white by keeping red at 255 while green
+and blue rise together from 0 to 255 and then fall back to zero. WS2812B has no
+dedicated white die.
+
+```powershell
+make -C firmware\stm32_sensor_head_lcd ws2812b-pa3-smooth-demo
+make -C firmware\stm32_sensor_head_lcd flash-ws2812b-pa3-smooth-demo
+```
