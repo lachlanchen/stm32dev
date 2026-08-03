@@ -1,0 +1,22 @@
+{
+  "date": "2026-08-03",
+  "controller": "STM32H743IIT6",
+  "output": "PA2 / TIM5_CH3 / YYNMOS-1",
+  "lamp": "6 V tungsten, brief overdrive test",
+  "source_measured_before_test_V": 12.5,
+  "pwm_frequency_Hz": 443,
+  "target_duty_16bit": 26843,
+  "target_duty_fraction": 0.4096,
+  "calculated_equivalent_rms_V": 8.0,
+  "trajectory": "1.5 s ramp up, immediate reversal, 1.5 s ramp down, then off",
+  "active_monitor_channel": "third / 0x42",
+  "turning_point_samples": 1,
+  "aliased_bus_register_V": 6.776,
+  "turning_point_current_mA": 39,
+  "sample_derived_power_mW": 264,
+  "comparison_6vrms": {
+    "average_current_mA": 27,
+    "average_sample_derived_power_mW": 201
+  },
+  "final_state": "PA0, PA1, PA2 and PA3 off; PA2 remains at zero indefinitely"
+}
