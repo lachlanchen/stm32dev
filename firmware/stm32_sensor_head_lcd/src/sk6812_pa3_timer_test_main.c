@@ -78,12 +78,22 @@ static void dwt_init(void)
     DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
 }
 
-static void tim2_ch4_pa3_init(void)
+static void pa3_force_low(void)
 {
     GPIO_InitTypeDef gpio = {0};
 
-    __HAL_RCC_GPIOA_CLK_ENABLE();
-    __HAL_RCC_TIM2_CLK_ENABLE();
+    PIXEL_PORT->BSRRH = PIXEL_PIN;
+    gpio.Pin = PIXEL_PIN;
+    gpio.Mode = GPIO_MODE_OUTPUT_PP;
+    gpio.Pull = GPIO_PULLDOWN;
+    gpio.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+    HAL_GPIO_Init(PIXEL_PORT, &gpio);
+    PIXEL_PORT->BSRRH = PIXEL_PIN;
+}
+
+static void pa3_timer_mode(void)
+{
+    GPIO_InitTypeDef gpio = {0};
 
     gpio.Pin = PIXEL_PIN;
     gpio.Mode = GPIO_MODE_AF_PP;
@@ -91,6 +101,13 @@ static void tim2_ch4_pa3_init(void)
     gpio.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
     gpio.Alternate = GPIO_AF1_TIM2;
     HAL_GPIO_Init(PIXEL_PORT, &gpio);
+}
+
+static void tim2_ch4_pa3_init(void)
+{
+    __HAL_RCC_GPIOA_CLK_ENABLE();
+    __HAL_RCC_TIM2_CLK_ENABLE();
+    pa3_force_low();
 
     TIM2->CR1 = 0u;
     TIM2->CR2 = 0u;
@@ -144,6 +161,7 @@ static void show_two(Pixel pixel)
     primask = __get_PRIMASK();
     __disable_irq();
 
+    pa3_timer_mode();
     TIM2->CR1 &= ~TIM_CR1_CEN;
     TIM2->CCER &= ~TIM_CCER_CC4E;
     TIM2->CNT = 0u;
@@ -163,6 +181,7 @@ static void show_two(Pixel pixel)
     wait_update();
     TIM2->CR1 &= ~TIM_CR1_CEN;
     TIM2->CCER &= ~TIM_CCER_CC4E;
+    pa3_force_low();
 
     if (primask == 0u) {
         __enable_irq();

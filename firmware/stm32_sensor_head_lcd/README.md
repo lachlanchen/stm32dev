@@ -158,6 +158,10 @@ bit-bang test. TIM2_CH4 drives `PA3/A3` with a 200 MHz timer: `ARR=249`, zero-bi
 high time `60` ticks, and one-bit high time `120` ticks. CCR4 preload removes
 software edge jitter. It sends identical `GRBW` frames to two daisy-chained
 pixels and holds red, green, blue, and white for three seconds each.
+After every frame, PA3 is changed back to push-pull GPIO output-low for the
+entire three-second hold. This prevents the data input from floating while
+TIM2_CH4 is disabled; PA3 returns to alternate-function mode only while a frame
+is being transmitted.
 
 ```powershell
 make -C firmware\stm32_sensor_head_lcd sk6812-pa3-timer-test
