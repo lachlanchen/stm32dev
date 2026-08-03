@@ -43,8 +43,11 @@
 #define SK6812_RESET_US             100u
 #define DEMO_LEVEL                  96u
 #define HUE_POSITIONS               1536u
-#define HUE_STEP                    4u
-#define FRAME_DELAY_MS              8u
+#define FRAME_RATE_HZ               1000u
+#define CYCLE_DURATION_MS           500u
+#define FRAMES_PER_CYCLE            ((FRAME_RATE_HZ * CYCLE_DURATION_MS) / 1000u)
+#define FRAME_PERIOD_CYCLES         (CPU_HZ / FRAME_RATE_HZ)
+#define PHASE_MODULUS               (HUE_POSITIONS * FRAMES_PER_CYCLE)
 
 /* Rev.01 data sheet order. Set to 1 if the physical part uses GRBW. */
 #define SK6812_USE_GRBW_ORDER       1u
@@ -94,13 +97,6 @@ static void delay_us(uint32_t us)
 {
     while (us-- != 0u) {
         wait_cycles(CPU_HZ / 1000000u);
-    }
-}
-
-static void delay_ms(uint32_t ms)
-{
-    while (ms-- != 0u) {
-        delay_us(1000u);
     }
 }
 
@@ -196,20 +192,27 @@ static Pixel hue_to_rgbw(uint16_t hue)
 
 int main(void)
 {
-    uint16_t hue = 0u;
+    uint32_t phase = 0u;
+    uint32_t next_frame;
 
     clock_init_64mhz();
     pa0_init();
     dwt_init();
+    next_frame = DWT_CYCCNT;
 
     for (;;) {
+        uint16_t hue = (uint16_t)(phase / FRAMES_PER_CYCLE);
         Pixel color = hue_to_rgbw(hue);
         show_two(color, color);
-        delay_ms(FRAME_DELAY_MS);
 
-        hue = (uint16_t)(hue + HUE_STEP);
-        if (hue >= HUE_POSITIONS) {
-            hue = (uint16_t)(hue - HUE_POSITIONS);
+        /* Exact rational phase accumulator: 500 frames per 0.5 s cycle. */
+        phase += HUE_POSITIONS;
+        if (phase >= PHASE_MODULUS) {
+            phase -= PHASE_MODULUS;
+        }
+
+        next_frame += FRAME_PERIOD_CYCLES;
+        while ((int32_t)(DWT_CYCCNT - next_frame) < 0) {
         }
     }
 }

@@ -11,10 +11,12 @@ red -> yellow -> green -> cyan -> blue -> magenta -> red
 ```
 
 The full wheel contains 1,536 hue positions: six transitions with 256 positions
-each. Firmware advances four positions every 8 ms, giving 384 displayed frames,
-about 125 updates/s, and a complete loop in approximately 3.07 seconds. The
-white channel stays at zero so it does not desaturate the RGB colors. Peak demo
-brightness is limited to `96/255`.
+each. A rational phase accumulator renders exactly 500 frames per cycle. It
+alternates three- and four-position hue advances, updates at 1,000 frames/s,
+and completes one wheel in exactly 0.5 seconds. A DWT deadline scheduler fixes
+frame starts at 1 ms intervals instead of adding a delay after transmission.
+The white channel stays at zero so it does not desaturate the RGB colors. Peak
+demo brightness is limited to `96/255`.
 
 ## What 0-255 means
 
