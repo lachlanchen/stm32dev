@@ -8,9 +8,14 @@
  * PA1/A1 = TIM5_CH2
  * PA2/A2 = TIM5_CH3
  *
- * Both channels execute 0 -> 100% in 1 s and immediately 100% -> 0 in
- * 1 s.  They then remain disabled indefinitely.  Full duty is safe only
- * when each external supply is set to its lamp rating.
+ * The channels execute a complementary crossfade on one TIM5 counter:
+ *
+ *   first second:  A1 0 -> 100%, A2 100% -> 0
+ *   second second: A1 100% -> 0, A2 0 -> 100%
+ *
+ * Both timer preload registers latch on the same update event.  The outputs
+ * then remain disabled indefinitely.  Full duty is safe only when each
+ * external supply is set to its lamp rating.
  */
 #define PWM_PORT                   GPIOA
 #define PWM_PINS                   (GPIO_PIN_1 | GPIO_PIN_2)
@@ -107,13 +112,15 @@ static uint16_t smoothstep_q16(uint32_t index)
     return (uint16_t)(y > 65535u ? 65535u : y);
 }
 
-static void set_both(uint16_t duty)
+static void set_complementary(uint16_t a1_duty)
 {
     uint32_t period = TIM5->ARR + 1u;
-    uint32_t compare = (uint32_t)(((uint64_t)duty * period + 32767u) / 65535u);
+    uint16_t a2_duty = (uint16_t)(65535u - a1_duty);
+    uint32_t a1_compare = (uint32_t)(((uint64_t)a1_duty * period + 32767u) / 65535u);
+    uint32_t a2_compare = (uint32_t)(((uint64_t)a2_duty * period + 32767u) / 65535u);
 
-    TIM5->CCR2 = compare;
-    TIM5->CCR3 = compare;
+    TIM5->CCR2 = a1_compare;
+    TIM5->CCR3 = a2_compare;
 }
 
 static void wait_control_deadline(uint32_t *next_update)
@@ -128,11 +135,11 @@ static void run_sweep(void)
     uint32_t next_update = DWT->CYCCNT;
 
     for (uint32_t frame = 0u; frame < RAMP_FRAMES; frame++) {
-        set_both(smoothstep_q16(frame));
+        set_complementary(smoothstep_q16(frame));
         wait_control_deadline(&next_update);
     }
     for (uint32_t frame = 0u; frame < RAMP_FRAMES; frame++) {
-        set_both(smoothstep_q16(RAMP_FRAMES - 1u - frame));
+        set_complementary(smoothstep_q16(RAMP_FRAMES - 1u - frame));
         wait_control_deadline(&next_update);
     }
     outputs_off();
