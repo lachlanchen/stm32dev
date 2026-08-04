@@ -32,6 +32,10 @@ else ifeq ($(APP),tungsten_pa2_smooth_test)
 PROJECT := stm32_tungsten_pa2_smooth_test
 BUILD_DIR := build_tungsten_pa2_smooth_test
 APP_SRCS := src/tungsten_pa2_smooth_test_main.c
+else ifeq ($(APP),dual_tungsten_pa1_pa2_full_sweep)
+PROJECT := stm32_dual_tungsten_pa1_pa2_full_sweep
+BUILD_DIR := build_dual_tungsten_pa1_pa2_full_sweep
+APP_SRCS := src/dual_tungsten_pa1_pa2_full_sweep_main.c
 else ifeq ($(APP),tungsten_pa2_full_diagnostic)
 PROJECT := stm32_tungsten_pa2_full_diagnostic
 BUILD_DIR := build_tungsten_pa2_full_diagnostic
@@ -127,7 +131,7 @@ SRCS := \
 
 OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(filter %.c,$(SRCS))) $(patsubst %.s,$(BUILD_DIR)/%.o,$(filter %.s,$(SRCS)))
 
-.PHONY: all clean flash nand-diag flash-nand-diag clean-nand-diag qspi-diag flash-qspi-diag clean-qspi-diag sk6812 flash-sk6812 clean-sk6812 sk6812-pa3-test flash-sk6812-pa3-test clean-sk6812-pa3-test sk6812-pa3-timer-test flash-sk6812-pa3-timer-test clean-sk6812-pa3-timer-test sk6812-pa3-smooth-demo flash-sk6812-pa3-smooth-demo clean-sk6812-pa3-smooth-demo ws2812b-pa3-smooth-demo flash-ws2812b-pa3-smooth-demo clean-ws2812b-pa3-smooth-demo tungsten-pa2-smooth-test flash-tungsten-pa2-smooth-test clean-tungsten-pa2-smooth-test tungsten-pa2-full-diagnostic flash-tungsten-pa2-full-diagnostic clean-tungsten-pa2-full-diagnostic tungsten-pa2-6vrms-monitor flash-tungsten-pa2-6vrms-monitor clean-tungsten-pa2-6vrms-monitor tungsten-pa2-8vrms-pulse flash-tungsten-pa2-8vrms-pulse clean-tungsten-pa2-8vrms-pulse tungsten-pa2-10vrms-pulse flash-tungsten-pa2-10vrms-pulse clean-tungsten-pa2-10vrms-pulse tungsten-pa2-12vrms-pulse flash-tungsten-pa2-12vrms-pulse clean-tungsten-pa2-12vrms-pulse h7-optical-measurement-controller flash-h7-optical-measurement-controller clean-h7-optical-measurement-controller h7-optical-joint-scan-controller flash-h7-optical-joint-scan-controller clean-h7-optical-joint-scan-controller h7-optical-joint-tsl-controller flash-h7-optical-joint-tsl-controller clean-h7-optical-joint-tsl-controller
+.PHONY: all clean flash nand-diag flash-nand-diag clean-nand-diag qspi-diag flash-qspi-diag clean-qspi-diag sk6812 flash-sk6812 clean-sk6812 sk6812-pa3-test flash-sk6812-pa3-test clean-sk6812-pa3-test sk6812-pa3-timer-test flash-sk6812-pa3-timer-test clean-sk6812-pa3-timer-test sk6812-pa3-smooth-demo flash-sk6812-pa3-smooth-demo clean-sk6812-pa3-smooth-demo ws2812b-pa3-smooth-demo flash-ws2812b-pa3-smooth-demo clean-ws2812b-pa3-smooth-demo tungsten-pa2-smooth-test flash-tungsten-pa2-smooth-test clean-tungsten-pa2-smooth-test dual-tungsten-pa1-pa2-full-sweep flash-dual-tungsten-pa1-pa2-full-sweep clean-dual-tungsten-pa1-pa2-full-sweep tungsten-pa2-full-diagnostic flash-tungsten-pa2-full-diagnostic clean-tungsten-pa2-full-diagnostic tungsten-pa2-6vrms-monitor flash-tungsten-pa2-6vrms-monitor clean-tungsten-pa2-6vrms-monitor tungsten-pa2-8vrms-pulse flash-tungsten-pa2-8vrms-pulse clean-tungsten-pa2-8vrms-pulse tungsten-pa2-10vrms-pulse flash-tungsten-pa2-10vrms-pulse clean-tungsten-pa2-10vrms-pulse tungsten-pa2-12vrms-pulse flash-tungsten-pa2-12vrms-pulse clean-tungsten-pa2-12vrms-pulse h7-optical-measurement-controller flash-h7-optical-measurement-controller clean-h7-optical-measurement-controller h7-optical-joint-scan-controller flash-h7-optical-joint-scan-controller clean-h7-optical-joint-scan-controller h7-optical-joint-tsl-controller flash-h7-optical-joint-tsl-controller clean-h7-optical-joint-tsl-controller
 
 all: $(BUILD_DIR)/$(PROJECT).elf $(BUILD_DIR)/$(PROJECT).bin
 	$(SIZE) $(BUILD_DIR)/$(PROJECT).elf
@@ -220,6 +224,15 @@ flash-tungsten-pa2-smooth-test: tungsten-pa2-smooth-test
 
 clean-tungsten-pa2-smooth-test:
 	$(MAKE) APP=tungsten_pa2_smooth_test clean
+
+dual-tungsten-pa1-pa2-full-sweep:
+	$(MAKE) APP=dual_tungsten_pa1_pa2_full_sweep all
+
+flash-dual-tungsten-pa1-pa2-full-sweep: dual-tungsten-pa1-pa2-full-sweep
+	openocd -f interface/stlink.cfg -c "adapter serial 00710049572D430E4E4C3054" -f target/stm32h7x.cfg -c "adapter speed 1000" -c "program build_dual_tungsten_pa1_pa2_full_sweep/stm32_dual_tungsten_pa1_pa2_full_sweep.elf verify reset exit"
+
+clean-dual-tungsten-pa1-pa2-full-sweep:
+	$(MAKE) APP=dual_tungsten_pa1_pa2_full_sweep clean
 
 tungsten-pa2-full-diagnostic:
 	$(MAKE) APP=tungsten_pa2_full_diagnostic all
