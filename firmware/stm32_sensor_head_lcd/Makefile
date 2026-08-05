@@ -68,6 +68,10 @@ else ifeq ($(APP),h7_optical_joint_scan_controller)
 PROJECT := stm32_h7_optical_joint_scan_controller
 BUILD_DIR := build_h7_optical_joint_scan_controller
 APP_SRCS := src/h7_optical_joint_scan_controller_main.c
+else ifeq ($(APP),h7_optical_joint_scan_latch_sync)
+PROJECT := stm32_h7_optical_joint_scan_latch_sync
+BUILD_DIR := build_h7_optical_joint_scan_latch_sync
+APP_SRCS := src/h7_optical_joint_scan_latch_sync_main.c
 else ifeq ($(APP),h7_optical_joint_tsl_controller)
 PROJECT := stm32_h7_optical_joint_tsl_controller
 BUILD_DIR := build_h7_optical_joint_tsl_controller
@@ -309,6 +313,15 @@ flash-h7-optical-joint-scan-controller: h7-optical-joint-scan-controller
 
 clean-h7-optical-joint-scan-controller:
 	$(MAKE) APP=h7_optical_joint_scan_controller clean
+
+h7-optical-joint-scan-latch-sync:
+	$(MAKE) APP=h7_optical_joint_scan_latch_sync all
+
+flash-h7-optical-joint-scan-latch-sync: h7-optical-joint-scan-latch-sync
+	openocd -f interface/stlink.cfg -c "adapter serial 00710049572D430E4E4C3054" -f target/stm32h7x.cfg -c "adapter speed 1000" -c "program build_h7_optical_joint_scan_latch_sync/stm32_h7_optical_joint_scan_latch_sync.elf verify reset exit"
+
+clean-h7-optical-joint-scan-latch-sync:
+	$(MAKE) APP=h7_optical_joint_scan_latch_sync clean
 
 h7-optical-joint-tsl-controller:
 	$(MAKE) APP=h7_optical_joint_tsl_controller all
