@@ -9,8 +9,9 @@
  *   MCP4728 A  -> 1 kohm -> QYH1123 electrode 1
  *   MCP4728 B  -> 1 kohm -> QYH1123 electrode 2
  *
- * The DAC alternates (A, B) between (3.0 V, 0 V) and (0 V, 3.0 V)
- * at 200 Hz. The LCD therefore sees 3.0 Vrms differential drive with
+ * The DAC alternates (A, B) between (2.25 V, 0.75 V) and
+ * (0.75 V, 2.25 V) at 200 Hz. The LCD therefore sees 1.5 Vrms
+ * differential drive (50% electrical amplitude) with
  * approximately zero DC bias. LDAC may remain tied high because every pair
  * of channel writes is committed by the General Call Software Update command.
  *
@@ -34,9 +35,13 @@
 
 #define LCD_CARRIER_HZ           200u
 #define LCD_VDD_MV               3300u
-#define LCD_DRIVE_MV             3000u
-#define LCD_CODE_HIGH            ((uint16_t)(((uint32_t)LCD_DRIVE_MV * 4096u + (LCD_VDD_MV / 2u)) / LCD_VDD_MV))
-#define LCD_CODE_LOW             0u
+#define LCD_DIFFERENTIAL_MV      1500u
+#define LCD_COMMON_MODE_MV       1500u
+#define LCD_OUTPUT_HIGH_MV       (LCD_COMMON_MODE_MV + (LCD_DIFFERENTIAL_MV / 2u))
+#define LCD_OUTPUT_LOW_MV        (LCD_COMMON_MODE_MV - (LCD_DIFFERENTIAL_MV / 2u))
+#define LCD_MV_TO_CODE(mv)       ((uint16_t)(((uint32_t)(mv) * 4096u + (LCD_VDD_MV / 2u)) / LCD_VDD_MV))
+#define LCD_CODE_HIGH            LCD_MV_TO_CODE(LCD_OUTPUT_HIGH_MV)
+#define LCD_CODE_LOW             LCD_MV_TO_CODE(LCD_OUTPUT_LOW_MV)
 
 #define BB_PORT                  GPIOB
 #define BB_SCL_PIN               GPIO_PIN_8
@@ -241,7 +246,7 @@ int main(void)
     dwt_timer_init();
 
     printf("\r\nQYH1123 MCP4728 balanced black-state test\r\n");
-    printf("PB8=SCL PB9=SDA; LDAC=3V3; drive=+/-3.0V at 200Hz\r\n");
+    printf("PB8=SCL PB9=SDA; LDAC=3V3; drive=+/-1.5V at 200Hz\r\n");
 
     const uint8_t address = mcp4728_find();
     qyh_mcp4728_address = address;
