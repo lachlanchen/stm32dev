@@ -37,7 +37,7 @@
 #define LCD_VDD_MV               3300u
 #define LCD_OUTPUT_HIGH_MV       3000u
 #define LCD_OUTPUT_LOW_MV        0u
-#define LCD_SWEEP_ONE_WAY_MS     3000u
+#define LCD_SWEEP_ONE_WAY_MS     5000u
 #define LCD_SWEEP_STEPS          1000u
 #define LCD_MV_TO_CODE(mv)       ((uint16_t)(((uint32_t)(mv) * 4096u + (LCD_VDD_MV / 2u)) / LCD_VDD_MV))
 #define LCD_CODE_HIGH            LCD_MV_TO_CODE(LCD_OUTPUT_HIGH_MV)
@@ -249,7 +249,7 @@ int main(void)
     dwt_timer_init();
 
     printf("\r\nQYH1123 MCP4728 smooth complementary triangle test\r\n");
-    printf("PB8=SCL PB9=SDA; LDAC=3V3; Vdiff=-3V..+3V, 3s each way\r\n");
+    printf("PB8=SCL PB9=SDA; LDAC=3V3; Vdiff=-3V..+3V, 5s each way\r\n");
 
     const uint8_t address = mcp4728_find();
     qyh_mcp4728_address = address;
