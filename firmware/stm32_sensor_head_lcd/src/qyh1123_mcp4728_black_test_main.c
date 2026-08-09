@@ -1,0 +1,295 @@
+/*
+ * QYH1123 black-state candidate test using an MCP4728.
+ *
+ * Wiring:
+ *   STM32 PB8  -> MCP4728 SCL
+ *   STM32 PB9  -> MCP4728 SDA
+ *   STM32 3V3  -> MCP4728 VCC and LDAC
+ *   STM32 GND  -> MCP4728 GND
+ *   MCP4728 A  -> 1 kohm -> QYH1123 electrode 1
+ *   MCP4728 B  -> 1 kohm -> QYH1123 electrode 2
+ *
+ * The DAC alternates (A, B) between (3.0 V, 0 V) and (0 V, 3.0 V)
+ * at 200 Hz. The LCD therefore sees 3.0 Vrms differential drive with
+ * approximately zero DC bias. LDAC may remain tied high because every pair
+ * of channel writes is committed by the General Call Software Update command.
+ *
+ * This is a separate diagnostic image. It does not replace or edit the normal
+ * sensor-head source. PA0..PA3 are held low only to keep disconnected optical
+ * control outputs in their safe idle state while this image is running.
+ */
+
+#include "sys.h"
+#include "delay.h"
+#include "usart.h"
+
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+
+#define MCP4728_ADDR_FIRST       0x60u
+#define MCP4728_ADDR_LAST        0x67u
+#define MCP4728_CMD_MULTI_WRITE  0x40u
+#define MCP4728_GENERAL_UPDATE   0x08u
+
+#define LCD_CARRIER_HZ           200u
+#define LCD_VDD_MV               3300u
+#define LCD_DRIVE_MV             3000u
+#define LCD_CODE_HIGH            ((uint16_t)(((uint32_t)LCD_DRIVE_MV * 4096u + (LCD_VDD_MV / 2u)) / LCD_VDD_MV))
+#define LCD_CODE_LOW             0u
+
+#define BB_PORT                  GPIOB
+#define BB_SCL_PIN               GPIO_PIN_8
+#define BB_SDA_PIN               GPIO_PIN_9
+
+enum {
+    QYH_STATUS_BOOT = 0,
+    QYH_STATUS_MCP_NOT_FOUND = 1,
+    QYH_STATUS_CONFIG_FAILED = 2,
+    QYH_STATUS_DRIVING = 3,
+    QYH_STATUS_RUNTIME_I2C_ERROR = 4
+};
+
+volatile uint32_t qyh_magic = 0x51594831u; /* "QYH1" */
+volatile uint32_t qyh_status = QYH_STATUS_BOOT;
+volatile uint32_t qyh_mcp4728_address = 0u;
+volatile uint32_t qyh_phase = 0u;
+volatile uint32_t qyh_updates = 0u;
+volatile uint32_t qyh_ack_failures = 0u;
+volatile uint32_t qyh_code_high = LCD_CODE_HIGH;
+volatile uint32_t qyh_carrier_hz = LCD_CARRIER_HZ;
+
+void SysTick_Handler(void)
+{
+    HAL_IncTick();
+}
+
+void Error_Handler(void)
+{
+    __disable_irq();
+    while (1) {
+    }
+}
+
+static void optical_outputs_force_safe(void)
+{
+    GPIO_InitTypeDef gpio = {0};
+
+    __HAL_RCC_GPIOA_CLK_ENABLE();
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3,
+                      GPIO_PIN_RESET);
+    gpio.Pin = GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3;
+    gpio.Mode = GPIO_MODE_OUTPUT_PP;
+    gpio.Pull = GPIO_NOPULL;
+    gpio.Speed = GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_Init(GPIOA, &gpio);
+}
+
+static void bb_delay(void)
+{
+    delay_us(2);
+}
+
+static void bb_scl(bool high)
+{
+    HAL_GPIO_WritePin(BB_PORT, BB_SCL_PIN, high ? GPIO_PIN_SET : GPIO_PIN_RESET);
+}
+
+static void bb_sda(bool high)
+{
+    HAL_GPIO_WritePin(BB_PORT, BB_SDA_PIN, high ? GPIO_PIN_SET : GPIO_PIN_RESET);
+}
+
+static bool bb_read_sda(void)
+{
+    return HAL_GPIO_ReadPin(BB_PORT, BB_SDA_PIN) == GPIO_PIN_SET;
+}
+
+static void i2c_bus_init(void)
+{
+    GPIO_InitTypeDef gpio = {0};
+
+    __HAL_RCC_GPIOB_CLK_ENABLE();
+    gpio.Pin = BB_SCL_PIN | BB_SDA_PIN;
+    gpio.Mode = GPIO_MODE_OUTPUT_OD;
+    gpio.Pull = GPIO_PULLUP;
+    gpio.Speed = GPIO_SPEED_FREQ_HIGH;
+    HAL_GPIO_Init(BB_PORT, &gpio);
+
+    bb_sda(true);
+    bb_scl(true);
+    bb_delay();
+}
+
+static void bb_start(void)
+{
+    bb_sda(true);
+    bb_scl(true);
+    bb_delay();
+    bb_sda(false);
+    bb_delay();
+    bb_scl(false);
+}
+
+static void bb_stop(void)
+{
+    bb_sda(false);
+    bb_delay();
+    bb_scl(true);
+    bb_delay();
+    bb_sda(true);
+    bb_delay();
+}
+
+static bool bb_write_byte(uint8_t value)
+{
+    for (uint32_t bit = 0; bit < 8u; ++bit) {
+        bb_sda((value & 0x80u) != 0u);
+        bb_delay();
+        bb_scl(true);
+        bb_delay();
+        bb_scl(false);
+        value <<= 1;
+    }
+
+    bb_sda(true);
+    bb_delay();
+    bb_scl(true);
+    bb_delay();
+    const bool acknowledged = !bb_read_sda();
+    bb_scl(false);
+    return acknowledged;
+}
+
+static bool i2c_present(uint8_t address)
+{
+    bb_start();
+    const bool acknowledged = bb_write_byte((uint8_t)(address << 1));
+    bb_stop();
+    return acknowledged;
+}
+
+static uint8_t mcp4728_find(void)
+{
+    for (uint8_t address = MCP4728_ADDR_FIRST; address <= MCP4728_ADDR_LAST; ++address) {
+        if (i2c_present(address)) {
+            return address;
+        }
+    }
+    return 0u;
+}
+
+static bool mcp4728_stage_channel(uint8_t address, uint8_t channel, uint16_t code)
+{
+    bool ok = true;
+
+    code &= 0x0FFFu;
+    bb_start();
+    ok = bb_write_byte((uint8_t)(address << 1)) && ok;
+    /* 01000 DAC1 DAC0 UDAC: UDAC=1 holds the output until software update. */
+    ok = bb_write_byte((uint8_t)(MCP4728_CMD_MULTI_WRITE |
+                                 ((channel & 0x03u) << 1) | 0x01u)) && ok;
+    /* VREF=VDD, normal power, gain=1, followed by D11..D8. */
+    ok = bb_write_byte((uint8_t)((code >> 8) & 0x0Fu)) && ok;
+    ok = bb_write_byte((uint8_t)(code & 0xFFu)) && ok;
+    bb_stop();
+    return ok;
+}
+
+static bool mcp4728_commit_all(void)
+{
+    bool ok = true;
+
+    bb_start();
+    ok = bb_write_byte(0x00u) && ok; /* I2C General Call write address. */
+    ok = bb_write_byte(MCP4728_GENERAL_UPDATE) && ok;
+    bb_stop();
+    return ok;
+}
+
+static bool mcp4728_set_pair(uint8_t address, uint16_t code_a, uint16_t code_b)
+{
+    const bool a_ok = mcp4728_stage_channel(address, 0u, code_a);
+    const bool b_ok = mcp4728_stage_channel(address, 1u, code_b);
+    const bool update_ok = mcp4728_commit_all();
+    return a_ok && b_ok && update_ok;
+}
+
+static void dwt_timer_init(void)
+{
+    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+    DWT->CYCCNT = 0u;
+    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+}
+
+static void wait_until_cycle(uint32_t deadline)
+{
+    while ((int32_t)(DWT->CYCCNT - deadline) < 0) {
+    }
+}
+
+int main(void)
+{
+    SCB_EnableICache();
+    SCB_EnableDCache();
+    HAL_Init();
+    Stm32_Clock_Init(160, 5, 2, 4);
+    delay_init(400);
+    uart_init(115200);
+    optical_outputs_force_safe();
+    i2c_bus_init();
+    dwt_timer_init();
+
+    printf("\r\nQYH1123 MCP4728 balanced black-state test\r\n");
+    printf("PB8=SCL PB9=SDA; LDAC=3V3; drive=+/-3.0V at 200Hz\r\n");
+
+    const uint8_t address = mcp4728_find();
+    qyh_mcp4728_address = address;
+    if (address == 0u) {
+        qyh_status = QYH_STATUS_MCP_NOT_FOUND;
+        printf("ERROR: MCP4728 not found at 0x60..0x67\r\n");
+        while (1) {
+            delay_ms(250);
+        }
+    }
+
+    printf("MCP4728 detected at 0x%02X; high code=%lu\r\n",
+           address, (unsigned long)LCD_CODE_HIGH);
+
+    if (!mcp4728_set_pair(address, LCD_CODE_HIGH, LCD_CODE_LOW)) {
+        qyh_status = QYH_STATUS_CONFIG_FAILED;
+        ++qyh_ack_failures;
+        printf("ERROR: initial MCP4728 write failed\r\n");
+        while (1) {
+            delay_ms(250);
+        }
+    }
+
+    qyh_status = QYH_STATUS_DRIVING;
+    const uint32_t half_period_cycles = SystemCoreClock / (LCD_CARRIER_HZ * 2u);
+    uint32_t deadline = DWT->CYCCNT + half_period_cycles;
+    bool phase = false;
+
+    while (1) {
+        wait_until_cycle(deadline);
+        deadline += half_period_cycles;
+
+        const bool ok = phase
+            ? mcp4728_set_pair(address, LCD_CODE_HIGH, LCD_CODE_LOW)
+            : mcp4728_set_pair(address, LCD_CODE_LOW, LCD_CODE_HIGH);
+
+        if (!ok) {
+            ++qyh_ack_failures;
+            qyh_status = QYH_STATUS_RUNTIME_I2C_ERROR;
+        } else {
+            qyh_status = QYH_STATUS_DRIVING;
+            ++qyh_updates;
+            phase = !phase;
+            qyh_phase = phase ? 1u : 0u;
+        }
+
+        if ((int32_t)(DWT->CYCCNT - deadline) >= 0) {
+            deadline = DWT->CYCCNT + half_period_cycles;
+        }
+    }
+}
