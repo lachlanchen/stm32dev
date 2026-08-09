@@ -9,10 +9,11 @@
  *   MCP4728 A  -> 1 kohm -> QYH1123 electrode 1
  *   MCP4728 B  -> 1 kohm -> QYH1123 electrode 2
  *
- * During each one-second sweep, A rises smoothly from 0 V to 3 V while B
- * falls from 3 V to 0 V. The following one-second sweep reverses this motion.
- * Vdiff=A-B therefore scans -3 V -> +3 V -> -3 V, while A+B stays at 3 V
- * and the differential average over a complete cycle is approximately zero.
+ * During each sweep, A and B remain complementary while Vdiff scans
+ * -3 V -> +3 V -> -3 V. A generic inverse TN/HTN electro-optic lookup table
+ * makes estimated optical darkness, rather than voltage, vary linearly with
+ * time. A+B stays at 3 V and the differential average over a complete cycle
+ * is approximately zero.
  * LDAC may remain tied high because every pair of channel writes is committed
  * by the General Call Software Update command.
  *
@@ -66,6 +67,19 @@ volatile uint32_t qyh_code_a = LCD_CODE_LOW;
 volatile uint32_t qyh_code_b = LCD_CODE_HIGH;
 volatile uint32_t qyh_sweep_position = 0u;
 volatile int32_t qyh_sweep_direction = 1;
+volatile uint32_t qyh_target_darkness_permille = 1000u;
+volatile uint32_t qyh_drive_amplitude_mv = 3000u;
+
+/*
+ * Generic inverse electro-optic curve for a normally-white TN/HTN cell.
+ * The index is desired darkness in 1/16 increments; values are differential
+ * voltage magnitude in mV. This is deliberately a smooth heuristic, not a
+ * substitute for a measured transmission-versus-voltage calibration.
+ */
+static const uint16_t lcd_inverse_darkness_mv[17] = {
+       0u,  700u,  950u, 1100u, 1220u, 1320u, 1410u, 1500u, 1580u,
+    1660u, 1750u, 1840u, 1940u, 2060u, 2220u, 2470u, 3000u
+};
 
 void SysTick_Handler(void)
 {
@@ -223,6 +237,20 @@ static bool mcp4728_set_pair(uint8_t address, uint16_t code_a, uint16_t code_b)
     return a_ok && b_ok && update_ok;
 }
 
+static uint16_t lcd_voltage_for_darkness(uint16_t darkness_permille)
+{
+    if (darkness_permille >= 1000u) {
+        return lcd_inverse_darkness_mv[16];
+    }
+
+    const uint32_t scaled = (uint32_t)darkness_permille * 16u;
+    const uint32_t index = scaled / 1000u;
+    const uint32_t fraction = scaled % 1000u;
+    const uint32_t low = lcd_inverse_darkness_mv[index];
+    const uint32_t high = lcd_inverse_darkness_mv[index + 1u];
+    return (uint16_t)(low + ((high - low) * fraction + 500u) / 1000u);
+}
+
 static void dwt_timer_init(void)
 {
     CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
@@ -249,7 +277,8 @@ int main(void)
     dwt_timer_init();
 
     printf("\r\nQYH1123 MCP4728 smooth complementary triangle test\r\n");
-    printf("PB8=SCL PB9=SDA; LDAC=3V3; Vdiff=-3V..+3V, 5s each way\r\n");
+    printf("PB8=SCL PB9=SDA; LDAC=3V3; heuristic uniform-intensity sweep\r\n");
+    printf("Vdiff=-3V..+3V, 5s each way, inverse TN/HTN response LUT\r\n");
 
     const uint8_t address = mcp4728_find();
     qyh_mcp4728_address = address;
@@ -284,10 +313,20 @@ int main(void)
         wait_until_cycle(deadline);
         deadline += step_period_cycles;
 
-        const uint16_t code_a = (uint16_t)
-            (((uint32_t)LCD_CODE_HIGH * position + (LCD_SWEEP_STEPS / 2u)) /
-             LCD_SWEEP_STEPS);
-        const uint16_t code_b = (uint16_t)(LCD_CODE_HIGH - code_a);
+        const int32_t centered = (int32_t)(2u * position) - (int32_t)LCD_SWEEP_STEPS;
+        const uint32_t distance = (uint32_t)(centered < 0 ? -centered : centered);
+        const uint16_t darkness_permille = (uint16_t)
+            ((distance * 1000u + (LCD_SWEEP_STEPS / 2u)) / LCD_SWEEP_STEPS);
+        const uint16_t amplitude_mv = lcd_voltage_for_darkness(darkness_permille);
+        const int32_t differential_mv = centered < 0
+            ? -(int32_t)amplitude_mv
+            : (int32_t)amplitude_mv;
+        const uint16_t output_a_mv = (uint16_t)
+            (((int32_t)LCD_OUTPUT_HIGH_MV + differential_mv) / 2);
+        const uint16_t output_b_mv = (uint16_t)
+            (((int32_t)LCD_OUTPUT_HIGH_MV - differential_mv) / 2);
+        const uint16_t code_a = LCD_MV_TO_CODE(output_a_mv);
+        const uint16_t code_b = LCD_MV_TO_CODE(output_b_mv);
 
         const bool ok = mcp4728_set_pair(address, code_a, code_b);
 
@@ -301,6 +340,8 @@ int main(void)
             qyh_code_b = code_b;
             qyh_sweep_position = position;
             qyh_sweep_direction = direction;
+            qyh_target_darkness_permille = darkness_permille;
+            qyh_drive_amplitude_mv = amplitude_mv;
             qyh_phase = direction > 0 ? 1u : 0u;
         }
 
