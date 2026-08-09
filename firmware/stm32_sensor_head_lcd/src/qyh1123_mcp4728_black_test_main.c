@@ -1,5 +1,5 @@
 /*
- * QYH1123 black-state candidate test using an MCP4728.
+ * QYH1123 smooth complementary triangle test using an MCP4728.
  *
  * Wiring:
  *   STM32 PB8  -> MCP4728 SCL
@@ -9,11 +9,12 @@
  *   MCP4728 A  -> 1 kohm -> QYH1123 electrode 1
  *   MCP4728 B  -> 1 kohm -> QYH1123 electrode 2
  *
- * The DAC alternates (A, B) between (2.25 V, 0.75 V) and
- * (0.75 V, 2.25 V) at 200 Hz. The LCD therefore sees 1.5 Vrms
- * differential drive (50% electrical amplitude) with
- * approximately zero DC bias. LDAC may remain tied high because every pair
- * of channel writes is committed by the General Call Software Update command.
+ * During each one-second sweep, A rises smoothly from 0 V to 3 V while B
+ * falls from 3 V to 0 V. The following one-second sweep reverses this motion.
+ * Vdiff=A-B therefore scans -3 V -> +3 V -> -3 V, while A+B stays at 3 V
+ * and the differential average over a complete cycle is approximately zero.
+ * LDAC may remain tied high because every pair of channel writes is committed
+ * by the General Call Software Update command.
  *
  * This is a separate diagnostic image. It does not replace or edit the normal
  * sensor-head source. PA0..PA3 are held low only to keep disconnected optical
@@ -33,12 +34,11 @@
 #define MCP4728_CMD_MULTI_WRITE  0x40u
 #define MCP4728_GENERAL_UPDATE   0x08u
 
-#define LCD_CARRIER_HZ           200u
 #define LCD_VDD_MV               3300u
-#define LCD_DIFFERENTIAL_MV      1500u
-#define LCD_COMMON_MODE_MV       1500u
-#define LCD_OUTPUT_HIGH_MV       (LCD_COMMON_MODE_MV + (LCD_DIFFERENTIAL_MV / 2u))
-#define LCD_OUTPUT_LOW_MV        (LCD_COMMON_MODE_MV - (LCD_DIFFERENTIAL_MV / 2u))
+#define LCD_OUTPUT_HIGH_MV       3000u
+#define LCD_OUTPUT_LOW_MV        0u
+#define LCD_SWEEP_ONE_WAY_MS     1000u
+#define LCD_SWEEP_STEPS          1000u
 #define LCD_MV_TO_CODE(mv)       ((uint16_t)(((uint32_t)(mv) * 4096u + (LCD_VDD_MV / 2u)) / LCD_VDD_MV))
 #define LCD_CODE_HIGH            LCD_MV_TO_CODE(LCD_OUTPUT_HIGH_MV)
 #define LCD_CODE_LOW             LCD_MV_TO_CODE(LCD_OUTPUT_LOW_MV)
@@ -62,7 +62,10 @@ volatile uint32_t qyh_phase = 0u;
 volatile uint32_t qyh_updates = 0u;
 volatile uint32_t qyh_ack_failures = 0u;
 volatile uint32_t qyh_code_high = LCD_CODE_HIGH;
-volatile uint32_t qyh_carrier_hz = LCD_CARRIER_HZ;
+volatile uint32_t qyh_code_a = LCD_CODE_LOW;
+volatile uint32_t qyh_code_b = LCD_CODE_HIGH;
+volatile uint32_t qyh_sweep_position = 0u;
+volatile int32_t qyh_sweep_direction = 1;
 
 void SysTick_Handler(void)
 {
@@ -245,8 +248,8 @@ int main(void)
     i2c_bus_init();
     dwt_timer_init();
 
-    printf("\r\nQYH1123 MCP4728 balanced black-state test\r\n");
-    printf("PB8=SCL PB9=SDA; LDAC=3V3; drive=+/-1.5V at 200Hz\r\n");
+    printf("\r\nQYH1123 MCP4728 smooth complementary triangle test\r\n");
+    printf("PB8=SCL PB9=SDA; LDAC=3V3; Vdiff=-3V..+3V, 1s each way\r\n");
 
     const uint8_t address = mcp4728_find();
     qyh_mcp4728_address = address;
@@ -261,7 +264,7 @@ int main(void)
     printf("MCP4728 detected at 0x%02X; high code=%lu\r\n",
            address, (unsigned long)LCD_CODE_HIGH);
 
-    if (!mcp4728_set_pair(address, LCD_CODE_HIGH, LCD_CODE_LOW)) {
+    if (!mcp4728_set_pair(address, LCD_CODE_LOW, LCD_CODE_HIGH)) {
         qyh_status = QYH_STATUS_CONFIG_FAILED;
         ++qyh_ack_failures;
         printf("ERROR: initial MCP4728 write failed\r\n");
@@ -271,17 +274,22 @@ int main(void)
     }
 
     qyh_status = QYH_STATUS_DRIVING;
-    const uint32_t half_period_cycles = SystemCoreClock / (LCD_CARRIER_HZ * 2u);
-    uint32_t deadline = DWT->CYCCNT + half_period_cycles;
-    bool phase = false;
+    const uint32_t step_period_cycles =
+        (SystemCoreClock / 1000u) * LCD_SWEEP_ONE_WAY_MS / LCD_SWEEP_STEPS;
+    uint32_t deadline = DWT->CYCCNT + step_period_cycles;
+    uint32_t position = 0u;
+    int32_t direction = 1;
 
     while (1) {
         wait_until_cycle(deadline);
-        deadline += half_period_cycles;
+        deadline += step_period_cycles;
 
-        const bool ok = phase
-            ? mcp4728_set_pair(address, LCD_CODE_HIGH, LCD_CODE_LOW)
-            : mcp4728_set_pair(address, LCD_CODE_LOW, LCD_CODE_HIGH);
+        const uint16_t code_a = (uint16_t)
+            (((uint32_t)LCD_CODE_HIGH * position + (LCD_SWEEP_STEPS / 2u)) /
+             LCD_SWEEP_STEPS);
+        const uint16_t code_b = (uint16_t)(LCD_CODE_HIGH - code_a);
+
+        const bool ok = mcp4728_set_pair(address, code_a, code_b);
 
         if (!ok) {
             ++qyh_ack_failures;
@@ -289,12 +297,29 @@ int main(void)
         } else {
             qyh_status = QYH_STATUS_DRIVING;
             ++qyh_updates;
-            phase = !phase;
-            qyh_phase = phase ? 1u : 0u;
+            qyh_code_a = code_a;
+            qyh_code_b = code_b;
+            qyh_sweep_position = position;
+            qyh_sweep_direction = direction;
+            qyh_phase = direction > 0 ? 1u : 0u;
+        }
+
+        if (direction > 0) {
+            if (position >= LCD_SWEEP_STEPS) {
+                direction = -1;
+                --position;
+            } else {
+                ++position;
+            }
+        } else if (position == 0u) {
+            direction = 1;
+            ++position;
+        } else {
+            --position;
         }
 
         if ((int32_t)(DWT->CYCCNT - deadline) >= 0) {
-            deadline = DWT->CYCCNT + half_period_cycles;
+            deadline = DWT->CYCCNT + step_period_cycles;
         }
     }
 }
