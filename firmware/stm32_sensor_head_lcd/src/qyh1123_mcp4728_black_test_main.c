@@ -41,7 +41,7 @@
 #define LCD_VDD_MV               3300u
 #define LCD_OUTPUT_HIGH_MV       3000u
 #define LCD_OUTPUT_LOW_MV        0u
-#define LCD_SWEEP_ONE_WAY_MS     200u
+#define LCD_SWEEP_ONE_WAY_MS     500u
 #define LCD_SWEEP_STEPS          1000u
 #define LCD_MV_TO_CODE(mv)       ((uint16_t)(((uint32_t)(mv) * 4096u + (LCD_VDD_MV / 2u)) / LCD_VDD_MV))
 #define LCD_CODE_HIGH            LCD_MV_TO_CODE(LCD_OUTPUT_HIGH_MV)
