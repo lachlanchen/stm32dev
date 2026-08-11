@@ -73,6 +73,7 @@ volatile int32_t qyh_sweep_direction = 1;
 volatile uint32_t qyh_target_darkness_permille = 1000u;
 volatile uint32_t qyh_drive_amplitude_mv = 3000u;
 volatile uint32_t qyh_led_enable = 0u;
+volatile uint32_t qyh_lcd_enable = 1u;
 volatile uint32_t qyh_phase_restart = 0u;
 volatile uint32_t qyh_capture_cycles = 0u;
 volatile uint32_t qyh_capture_completed = 0u;
@@ -326,6 +327,26 @@ int main(void)
     int32_t direction = 1;
 
     while (1) {
+        if (qyh_lcd_enable == 0u) {
+            const uint16_t parked_code = LCD_MV_TO_CODE(LCD_OUTPUT_HIGH_MV / 2u);
+            constant_led_set(qyh_led_enable != 0u);
+            if (qyh_code_a != parked_code || qyh_code_b != parked_code) {
+                if (mcp4728_set_pair(address, parked_code, parked_code)) {
+                    qyh_code_a = parked_code;
+                    qyh_code_b = parked_code;
+                    qyh_drive_amplitude_mv = 0u;
+                    qyh_target_darkness_permille = 0u;
+                    qyh_sweep_position = LCD_SWEEP_STEPS / 2u;
+                    qyh_sweep_direction = 0;
+                } else {
+                    ++qyh_ack_failures;
+                    qyh_status = QYH_STATUS_RUNTIME_I2C_ERROR;
+                }
+            }
+            delay_ms(1);
+            continue;
+        }
+
         if (qyh_phase_restart != 0u) {
             constant_led_set(false);
             (void)mcp4728_set_pair(address, LCD_CODE_LOW, LCD_CODE_HIGH);
