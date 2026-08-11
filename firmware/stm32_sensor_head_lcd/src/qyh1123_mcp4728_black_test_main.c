@@ -8,6 +8,8 @@
  *   STM32 GND  -> MCP4728 GND
  *   MCP4728 A  -> 1 kohm -> QYH1123 electrode 1
  *   MCP4728 B  -> 1 kohm -> QYH1123 electrode 2
+ *   STM32 PA4  -> NLED EN  (acquisition-gated illumination enable)
+ *   STM32 PA5  -> NLED DIM (100 percent current command while enabled)
  *
  * During each sweep, A and B remain complementary while Vdiff scans
  * -3 V -> +3 V -> -3 V. A generic inverse TN/HTN electro-optic lookup table
@@ -18,8 +20,9 @@
  * by the General Call Software Update command.
  *
  * This is a separate diagnostic image. It does not replace or edit the normal
- * sensor-head source. PA0..PA3 are held low only to keep disconnected optical
- * control outputs in their safe idle state while this image is running.
+ * sensor-head source. PA0..PA3 are held low to keep disconnected optical
+ * control outputs safe. PA4 and PA5 default low and are enabled only during a
+ * synchronized acquisition requested through the exported SWD control words.
  */
 
 #include "sys.h"
@@ -69,6 +72,10 @@ volatile uint32_t qyh_sweep_position = 0u;
 volatile int32_t qyh_sweep_direction = 1;
 volatile uint32_t qyh_target_darkness_permille = 1000u;
 volatile uint32_t qyh_drive_amplitude_mv = 3000u;
+volatile uint32_t qyh_led_enable = 0u;
+volatile uint32_t qyh_phase_restart = 0u;
+volatile uint32_t qyh_capture_cycles = 0u;
+volatile uint32_t qyh_capture_completed = 0u;
 
 /*
  * Generic inverse electro-optic curve for a normally-white TN/HTN cell.
@@ -100,11 +107,19 @@ static void optical_outputs_force_safe(void)
     __HAL_RCC_GPIOA_CLK_ENABLE();
     HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3,
                       GPIO_PIN_RESET);
-    gpio.Pin = GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3;
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4 | GPIO_PIN_5, GPIO_PIN_RESET);
+    gpio.Pin = GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3 |
+               GPIO_PIN_4 | GPIO_PIN_5;
     gpio.Mode = GPIO_MODE_OUTPUT_PP;
     gpio.Pull = GPIO_NOPULL;
     gpio.Speed = GPIO_SPEED_FREQ_LOW;
     HAL_GPIO_Init(GPIOA, &gpio);
+}
+
+static void constant_led_set(bool enabled)
+{
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4 | GPIO_PIN_5,
+                      enabled ? GPIO_PIN_SET : GPIO_PIN_RESET);
 }
 
 static void bb_delay(void)
@@ -278,7 +293,8 @@ int main(void)
 
     printf("\r\nQYH1123 MCP4728 smooth complementary triangle test\r\n");
     printf("PB8=SCL PB9=SDA; LDAC=3V3; heuristic uniform-intensity sweep\r\n");
-    printf("Vdiff=-3V..+3V, 5s each way, inverse TN/HTN response LUT\r\n");
+    printf("Vdiff=-3V..+3V, %lu ms each way, inverse TN/HTN response LUT\r\n",
+           (unsigned long)LCD_SWEEP_ONE_WAY_MS);
 
     const uint8_t address = mcp4728_find();
     qyh_mcp4728_address = address;
@@ -310,6 +326,21 @@ int main(void)
     int32_t direction = 1;
 
     while (1) {
+        if (qyh_phase_restart != 0u) {
+            constant_led_set(false);
+            (void)mcp4728_set_pair(address, LCD_CODE_LOW, LCD_CODE_HIGH);
+            position = 0u;
+            direction = 1;
+            qyh_sweep_position = 0u;
+            qyh_sweep_direction = 1;
+            qyh_capture_completed = 0u;
+            qyh_phase_restart = 0u;
+            deadline = DWT->CYCCNT + step_period_cycles;
+            constant_led_set(qyh_led_enable != 0u);
+            continue;
+        }
+
+        constant_led_set(qyh_led_enable != 0u);
         wait_until_cycle(deadline);
         deadline += step_period_cycles;
 
@@ -353,6 +384,13 @@ int main(void)
                 ++position;
             }
         } else if (position == 0u) {
+            if (qyh_led_enable != 0u && qyh_capture_cycles != 0u) {
+                ++qyh_capture_completed;
+                if (qyh_capture_completed >= qyh_capture_cycles) {
+                    qyh_led_enable = 0u;
+                    constant_led_set(false);
+                }
+            }
             direction = 1;
             ++position;
         } else {
