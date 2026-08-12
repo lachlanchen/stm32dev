@@ -9,7 +9,7 @@
  *   MCP4728 A  -> 1 kohm -> QYH1123 electrode 1
  *   MCP4728 B  -> 1 kohm -> QYH1123 electrode 2
  *   STM32 PA4  -> NLED EN  (acquisition-gated illumination enable)
- *   STM32 PA5  -> NLED DIM (100 percent current command while enabled)
+ *   STM32 PA5  -> NLED DIM (20 kHz PWM, 330 mA average target from 1 A peak)
  *
  * During each sweep, A and B remain complementary while Vdiff scans
  * -3 V -> +3 V -> -3 V. A generic inverse TN/HTN electro-optic lookup table
@@ -43,6 +43,8 @@
 #define LCD_OUTPUT_LOW_MV        0u
 #define LCD_SWEEP_ONE_WAY_MS     100u
 #define LCD_SWEEP_STEPS          1000u
+#define LED_PWM_FREQUENCY_HZ     20000u
+#define LED_PWM_PERIOD_COUNTS    1000u
 #define LCD_MV_TO_CODE(mv)       ((uint16_t)(((uint32_t)(mv) * 4096u + (LCD_VDD_MV / 2u)) / LCD_VDD_MV))
 #define LCD_CODE_HIGH            LCD_MV_TO_CODE(LCD_OUTPUT_HIGH_MV)
 #define LCD_CODE_LOW             LCD_MV_TO_CODE(LCD_OUTPUT_LOW_MV)
@@ -73,6 +75,9 @@ volatile int32_t qyh_sweep_direction = 1;
 volatile uint32_t qyh_target_darkness_permille = 1000u;
 volatile uint32_t qyh_drive_amplitude_mv = 3000u;
 volatile uint32_t qyh_led_enable = 0u;
+volatile uint32_t qyh_led_driver_peak_ma = 1000u;
+volatile uint32_t qyh_led_target_average_ma = 330u;
+volatile uint32_t qyh_led_pwm_permille = 0u;
 volatile uint32_t qyh_lcd_enable = 1u;
 volatile uint32_t qyh_phase_restart = 0u;
 volatile uint32_t qyh_capture_cycles = 0u;
@@ -117,10 +122,68 @@ static void optical_outputs_force_safe(void)
     HAL_GPIO_Init(GPIOA, &gpio);
 }
 
+static void constant_led_pwm_init(void)
+{
+    GPIO_InitTypeDef gpio = {0};
+    uint32_t timer_clock_hz;
+    uint32_t prescaler;
+
+    __HAL_RCC_GPIOA_CLK_ENABLE();
+    __HAL_RCC_TIM2_CLK_ENABLE();
+
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
+    gpio.Pin = GPIO_PIN_5;
+    gpio.Mode = GPIO_MODE_AF_PP;
+    gpio.Pull = GPIO_NOPULL;
+    gpio.Speed = GPIO_SPEED_FREQ_HIGH;
+    gpio.Alternate = GPIO_AF1_TIM2;
+    HAL_GPIO_Init(GPIOA, &gpio);
+
+    timer_clock_hz = HAL_RCC_GetPCLK1Freq();
+    if ((RCC->D2CFGR & RCC_D2CFGR_D2PPRE1) != RCC_HCLK_DIV1) {
+        timer_clock_hz *= 2u;
+    }
+    prescaler = timer_clock_hz /
+                (LED_PWM_FREQUENCY_HZ * LED_PWM_PERIOD_COUNTS);
+    if (prescaler == 0u) {
+        prescaler = 1u;
+    }
+
+    TIM2->CR1 = 0u;
+    TIM2->PSC = prescaler - 1u;
+    TIM2->ARR = LED_PWM_PERIOD_COUNTS - 1u;
+    TIM2->CCR1 = 0u;
+    TIM2->CCMR1 = TIM_CCMR1_OC1PE | (6u << TIM_CCMR1_OC1M_Pos);
+    TIM2->CCER = TIM_CCER_CC1E;
+    TIM2->EGR = TIM_EGR_UG;
+    TIM2->CR1 = TIM_CR1_ARPE | TIM_CR1_CEN;
+}
+
 static void constant_led_set(bool enabled)
 {
-    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4 | GPIO_PIN_5,
-                      enabled ? GPIO_PIN_SET : GPIO_PIN_RESET);
+    if (enabled) {
+        uint32_t peak_ma = qyh_led_driver_peak_ma;
+        uint32_t target_ma = qyh_led_target_average_ma;
+        uint32_t compare;
+
+        if (peak_ma == 0u) {
+            peak_ma = 1u;
+        }
+        if (target_ma > peak_ma) {
+            target_ma = peak_ma;
+        }
+        compare = (target_ma * LED_PWM_PERIOD_COUNTS + peak_ma / 2u) / peak_ma;
+        if (compare > LED_PWM_PERIOD_COUNTS) {
+            compare = LED_PWM_PERIOD_COUNTS;
+        }
+        qyh_led_pwm_permille = compare;
+        TIM2->CCR1 = compare;
+        HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_SET);
+    } else {
+        HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_RESET);
+        TIM2->CCR1 = 0u;
+        qyh_led_pwm_permille = 0u;
+    }
 }
 
 static void bb_delay(void)
@@ -289,6 +352,7 @@ int main(void)
     delay_init(400);
     uart_init(115200);
     optical_outputs_force_safe();
+    constant_led_pwm_init();
     i2c_bus_init();
     dwt_timer_init();
 
