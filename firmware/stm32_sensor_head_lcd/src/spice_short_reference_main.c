@@ -68,11 +68,14 @@ static bool ref_supply_ok(void) {
     uint32_t ch=ref_monitor_channel;
     if(ch>3 || !(ref_present_mask&(1u<<ch)) || !ref_monitor(ch)) { sef_fault=4; return false; }
     uint32_t supply=ref_bus_mV[ch];
-    if(supply<9000u || supply>14000u) { sef_fault=5; return false; }
+    if(supply<6000u || supply>14000u) { sef_fault=5; return false; }
     int32_t current=ref_current_mA[ch];
     if(current>2000 || current< -2000) { sef_fault=7; return false; }
-    /* Include positive shunt drop, then cap at 6 V RMS and never over 25%. */
+    /* A low off-state bus reading must never authorize increased duty.
+     * User confirms a nominal 12 V supply: use at least 12.5 V for the cap.
+     * This is a conservative command bound, not measured lamp RMS voltage. */
     if(current>0) supply+=(uint32_t)current/10u;
+    if(supply<12500u) supply=12500u;
     ref_cap=(uint32_t)((36000000ull*65535ull)/((uint64_t)supply*supply));
     if(ref_cap>16383u) ref_cap=16383u;
     return true;
