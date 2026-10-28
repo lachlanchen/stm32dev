@@ -1,0 +1,107 @@
+SPICE dual-LCD diagnostic, 2026-10-28
+==================================
+
+User request: indefinitely loop two bare LCD amplitudes in opposite directions.
+The lamp must remain off. The original SPICE firmware source stays unchanged.
+
+Hardware
+--------
+H7 ST-Link serial: 00710049572D430E4E4C3054.
+PB8=SCL, PB9=SDA. Both DAC supplies and LDAC pins use 3.3 V, common ground.
+Existing LCD1 uses A/B through one 1 kohm series resistor per electrode.
+Two-board topology: LCD2 uses A/B on the second uniquely addressed MCP4728.
+One-address pair topology: LCD1 uses A/B, LCD2 uses C/D.
+
+Two physical boards with the same I2C address cannot be separately selected.
+They can receive identical four-channel writes while LCD1 physically uses A/B
+and LCD2 physically uses C/D, but those electrode connections must be made
+before enabling pair topology. An ACK at one address does not count devices.
+No EEPROM address programming or undocumented LDAC rewiring is attempted.
+
+Preservation
+------------
+Actual full 2 MiB H7 flash backup:
+backups/dual_lcd_mcp4728_20261028_194242/h7_original_flash_2MiB.bin
+SHA256:
+021E45954CFB366BA5C405E72120B60F6F13D19C8A7846F0578E985808164740
+The prior candidate ELF/BIN are copied alongside the actual flash backup.
+NAND, QSPI, SD and option bytes are not written by this task.
+
+New independent firmware
+------------------------
+Source: firmware/stm32_sensor_head_lcd/src/spice_dual_lcd_mcp4728_main.c
+Build:
+make -C firmware/stm32_sensor_head_lcd PROJECT=stm32_spice_dual_lcd_mcp4728 BUILD_DIR=build_spice_dual_lcd_mcp4728 APP_SRCS=src/spice_dual_lcd_mcp4728_main.c -j8
+
+It reuses the proven low-level QYH DAC helper without modifying that file.
+Every discovered DAC's four outputs are parked near 1.5 V on boot.
+Exactly two distinct addresses automatically enable the requested endless
+opposite scan on the two A/B pairs. With any other address count, it waits
+with zero differential drive rather than claiming independent control.
+
+The carrier has nominal 5 ms positive and negative halves (100 Hz).
+Four channel values are staged with UDAC=1, then committed using General
+Call 0x08. The envelope is latched once per full carrier cycle, so each
+positive/negative pair has the same magnitude. The independent amplitudes
+sum to 3000 mV, using a smoothstep 1 s rise and 1 s fall by default.
+The two optical transmissions need not be opposite: that depends on each
+LCD, its polarizers, voltage response and optical alignment.
+
+PA0..PA5 are continuously forced low, including the tungsten PA2 output.
+The watchdog restarts the diagnostic on a stalled main loop. I2C errors
+disable scanning and attempt to park all outputs. This is not a certified
+hardware safety interlock.
+
+Host controls
+-------------
+python scripts/spice_dual_lcd_control.py status
+python scripts/spice_dual_lcd_control.py stop
+python scripts/spice_dual_lcd_control.py opposite-two-boards --rise-ms 1000
+python scripts/spice_dual_lcd_control.py opposite-pairs --confirm-lcd2-on-cd --rise-ms 1000
+
+The controller checks the DLC2 identity before writes and never flashes.
+It reports actual unique responding addresses, loop state, amplitudes,
+update/error counts and PA2 GPIO output state. It deliberately leaves an
+explicitly requested endless LCD loop running after the host command exits.
+Use --save-json PATH for a lightweight diagnostic record.
+
+Probe issue and method
+----------------------
+The initial no-flash SWD function-call probe did not return reliably with
+this OpenOCD installation. It is not used for the final diagnostic.
+The board was reset into its preserved application, actual flash was backed
+up, and the separate scan/drive image was built instead. Do not infer two
+unique board identities from a scan result containing only one address.
+
+Restore actual original flash with lamp power disconnected:
+openocd -f interface/stlink.cfg -c "adapter serial 00710049572D430E4E4C3054" -f target/stm32h7x.cfg -c "adapter speed 1000" -c "program {backups/dual_lcd_mcp4728_20261028_194242/h7_original_flash_2MiB.bin} 0x08000000 verify reset exit"
+Restoring old firmware may restore its own startup behavior; do not restore
+it automatically while the user's requested LCD-only diagnostic is active.
+
+Confirmed bring-up result
+-------------------------
+The independent diagnostic was compiled, flashed and verified successfully.
+The actual address scan found only 0x60, not two uniquely selectable boards.
+The user confirmed moving LCD2's electrode leads to C/D on its MCP4728,
+while LCD1 stays on A/B and all shared SDA/SCL wiring remains unchanged.
+Pair topology was then explicitly enabled and left running as requested:
+1 second smooth amplitude rise, 1 second fall, opposite amplitudes, continuous.
+
+Three live status samples reported amplitude pairs 31/2969, 2236/764 and
+2794/206 mV. Update count advanced 14 -> 536 -> 1034 and completed cycle
+count advanced 0 -> 1 -> 2. All samples reported ack_failures=0,
+late_halves=0 and lamp_pa2_gpio_high=false. These are firmware commands and
+status, not oscilloscope measurements or optical-transmission calibration.
+The lightweight probe/running JSON records are next to this document.
+
+The active image is now DLC2, not the previous SEF/SPICE acquisition image.
+Use spice_dual_lcd_control.py for this image; the old guarded acquisition
+controller will correctly refuse its different identity.
+The opposite loop continues after the host script exits. Stop parks both
+output pairs. Reset defaults to standby when only one address is found;
+re-enable pair topology after confirming LCD2 is still physically on C/D.
+
+Before starting the new image, stale debug breakpoints from the abandoned
+SWD-call experiment were disabled through FPB_CTRL at 0xE0002000 (value 2).
+The final diagnostic performs its own on-MCU address scan and no longer
+uses temporary calls into a paused application's CPU context.

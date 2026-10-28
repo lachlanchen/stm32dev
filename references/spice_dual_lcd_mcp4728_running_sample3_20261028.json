@@ -1,0 +1,24 @@
+{
+  "magic": 1145848626,
+  "ready": 1,
+  "status": 3,
+  "count": 1,
+  "enable": 1,
+  "topology": 2,
+  "restart": 0,
+  "rise_ms": 1000,
+  "amplitude1_mv": 2794,
+  "amplitude2_mv": 206,
+  "updates": 1034,
+  "ack_failures": 0,
+  "late_halves": 0,
+  "heartbeat": 8826233,
+  "cycles": 2,
+  "phase_ms": 1170,
+  "carrier_positive": 1,
+  "addresses": [
+    "0x60"
+  ],
+  "lamp_pa2_gpio_high": false,
+  "status_name": "opposite_loop"
+}

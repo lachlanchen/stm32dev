@@ -1,0 +1,24 @@
+{
+  "magic": 1145848626,
+  "ready": 1,
+  "status": 1,
+  "count": 1,
+  "enable": 0,
+  "topology": 1,
+  "restart": 0,
+  "rise_ms": 1000,
+  "amplitude1_mv": 0,
+  "amplitude2_mv": 0,
+  "updates": 0,
+  "ack_failures": 0,
+  "late_halves": 0,
+  "heartbeat": 993,
+  "cycles": 0,
+  "phase_ms": 0,
+  "carrier_positive": 0,
+  "addresses": [
+    "0x60"
+  ],
+  "lamp_pa2_gpio_high": false,
+  "status_name": "waiting_for_distinct_addresses"
+}
