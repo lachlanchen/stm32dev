@@ -1,0 +1,60 @@
+Dual-LCD plus lamp alignment cycle, 2026-10-28
+===========================================
+
+User confirmed that both bare LCDs visibly tune in the preserved DLC2
+diagnostic, then requested indefinite lamp cycling at nominal 4 V:
+5 seconds illuminated, 3 seconds cooling, while adjusting optical angles.
+
+This is a new separate DLA1 image. The DLC2 source, build and controls are
+unchanged. Actual previous flash and its ELF/BIN are preserved locally under
+backups/dual_lcd_lamp_align_<timestamp> before flashing the new image.
+The original earlier SPICE acquisition flash backup is also unchanged.
+
+New source:
+firmware/stm32_sensor_head_lcd/src/spice_dual_lcd_lamp_align_main.c
+New ELF:
+firmware/stm32_sensor_head_lcd/build_spice_dual_lcd_lamp_align/stm32_spice_dual_lcd_lamp_align.elf
+Identity: dual_magic=0x444C4131 (DLA1).
+
+Build with the existing Makefile, without changing that Makefile:
+make -C firmware/stm32_sensor_head_lcd PROJECT=stm32_spice_dual_lcd_lamp_align BUILD_DIR=build_spice_dual_lcd_lamp_align APP_SRCS=src/spice_dual_lcd_lamp_align_main.c -j8
+
+Wiring stays as confirmed:
+PB8=SCL, PB9=SDA, 3.3 V DAC VCC/LDAC, common ground.
+One unique DAC address is currently 0x60; boards mirror four-channel writes.
+LCD1 is on A/B, LCD2 is on C/D, retaining series resistors.
+PA2/TIM5_CH3 is the tungsten MOS PWM. PA0/PA1/PA3/PA4/PA5 stay low.
+
+Both LCD envelopes retain the preceding opposite 1 s rise / 1 s fall scan,
+with balanced 100 Hz carrier, independent A/B and C/D differential drives,
+and amplitudes summing to 3000 mV. Optical transmissions need not sum flat.
+
+The lamp uses the proven PSC=6, ARR=65535 TIM5 carrier (about 443 Hz for
+the current clock), CCR3 duty=6710/65536 during illumination, zero otherwise.
+This follows duty=(4.0/12.5)^2 with integer truncation. It represents about
+4 V RMS only under the saved supply assumption, not steady 4 V DC or a
+direct voltage measurement. A 12 V actual supply would give about 3.84 V
+ideal PWM RMS. Supply changes require reassessing this command.
+
+Firmware clamps on-time to at most 5000 ms, cooldown to at least 3000 ms,
+and the nominal target to at most 4000 mV. Timing is on the MCU, not host
+sleeps. Lamp cycling defaults disarmed on boot/reset and is explicitly
+armed by the user's alignment command. A stalled main loop is watchdog-
+reset and the lamp is disarmed afterward. This is not a certified thermal
+interlock. I2C faults or disabled LCD operation also force lamp duty zero.
+
+Control from stm32dev:
+python scripts/spice_dual_lcd_lamp_align_control.py align --confirm-lcd2-on-cd --rise-ms 1000
+python scripts/spice_dual_lcd_lamp_align_control.py status
+python scripts/spice_dual_lcd_lamp_align_control.py lamp-stop
+python scripts/spice_dual_lcd_lamp_align_control.py stop
+
+lamp-stop keeps the LCD sweeps; stop disables both LCD and lamp drive.
+The explicit alignment loop intentionally remains active after the host
+process exits, until stopped or reset. The old DLC2/SEF controllers have
+different identity guards and must not write the alignment image.
+
+Status reads TIM5 CCR3/ARR rather than PA2 ODR to determine the PWM command:
+an alternate-function PWM pin's ODR is not its active waveform.
+No camera acquisition, spectral calibration, or automatic angle finding
+is performed for this visual-alignment request.

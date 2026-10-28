@@ -1,0 +1,25 @@
+{
+    "active_firmware":  "DLA1",
+    "prior_actual_flash_backup":  "backups/dual_lcd_lamp_align_20261028_200406/h7_previous_dual_lcd_2MiB.bin",
+    "prior_actual_flash_sha256":  "830709A1BD07E920AB13B01D9FD138FE6E015F9AA2A433877657955866ADAA60",
+    "lamp_pin":  "PA2 TIM5_CH3",
+    "lamp_target_nominal_rms_mv":  4000,
+    "supply_calculation_bound_mv":  12500,
+    "lamp_on_ms":  5000,
+    "lamp_cooling_ms":  3000,
+    "observed_timer_duties":  [
+                                  6710,
+                                  0,
+                                  6710
+                              ],
+    "observed_lamp_cycle_counts":  [
+                                       0,
+                                       0,
+                                       1
+                                   ],
+    "lcd_topology":  "LCD1 A/B; LCD2 C/D; shared address 0x60",
+    "lcd_rise_ms":  1000,
+    "observed_i2c_errors":  0,
+    "observed_late_carrier_halves":  0,
+    "note":  "Loop intentionally left active at user request; voltage is PWM-calculated nominal RMS, not a direct measurement."
+}
