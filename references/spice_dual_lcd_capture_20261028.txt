@@ -1,0 +1,36 @@
+Independent two-LCD finite capture firmware DCP1, 28 October 2026
+
+Source: firmware/stm32_sensor_head_lcd/src/spice_dual_lcd_capture_main.c
+Build: firmware/stm32_sensor_head_lcd/build_spice_dual_lcd_capture/
+Identity: cap_magic = 0x44435031. The host checks identity before memory writes.
+Host: polarizer/scripts/spice_dual_lcd_capture.py in the neighbouring V-SPICE repo.
+
+The separate image was compiled and flashed with OpenOCD verification successful.
+Actual pre-flash 2 MiB backup:
+backups/dual_lcd_capture_20261028_205146/h7_before_dual_lcd_capture_2MiB.bin
+SHA256 FC89C1FF3DC67E20005B76639604AB8143E99EE056F80379B6C144609B4DC758
+No original firmware source or backup was replaced. No NAND, QSPI, SD card or
+spectrometer firmware was written.
+
+PA2 TIM5_CH3 supplies the lamp PWM, with a 16-bit duty register. PB8/PB9 supply
+the MCP4728 bus. LCD1 A/B and LCD2 C/D have separately programmable envelopes.
+Both electrodes reverse around a 1.5 V common mode at nominal 100 Hz. Each full
+AC pair uses a latched amplitude; UDAC staging and software update commit pairs.
+The same-address two-board arrangement is intentional and documented in polarizer.
+
+Finite waveform buffers contain 2..257 points. Requests are bounded to five seconds.
+The normal lamp command ceiling is 6 V nominal RMS. Explicit high mode permits
+brief commands up to 9 V, with a cumulative above-6-V time budget of 180 ms.
+Normal cooldown is three seconds; high mode uses five seconds. The source is a
+6 V-rated bulb; a conservative 12.5 V supply bound is used for duty calculation.
+These are nominal PWM equivalent voltages, not direct lamp-voltage measurements.
+I2C fault, cancel and completion force lamp duty zero. A watchdog is enabled.
+
+The pilot worked. A later host disk-writer queue overflow aborted the partial main
+run. The final reported hardware state was busy=0, duty=0, lamp_mv=0, both LCD
+amplitudes=0, fault=0 and ack_failures=0. The host throughput fix needs no new flash.
+
+USER GEOMETRY UPDATE
+LCD2 moved. The user is putting it back. Do not run illumination or acquisition
+until confirmation. Repeat the pilot and main capture in a fresh directory.
+Do not use the existing partial run as the final experiment or manuscript evidence.
