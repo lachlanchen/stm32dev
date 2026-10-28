@@ -1,0 +1,27 @@
+Completed restored-geometry two-LCD experiment, 28 October 2026
+
+This supersedes the earlier paused geometry handoff. The user restored LCD2 and
+confirmed focus. No wiring or firmware change was needed for the successful rerun.
+
+Current firmware is the separately backed-up finite DCP1 capture image:
+firmware/stm32_sensor_head_lcd/src/spice_dual_lcd_capture_main.c
+PA2/TIM5_CH3 lamp; PB8/PB9 DAC bus; LCD1 A/B and LCD2 C/D.
+The original display/measurement firmware remains preserved in the documented
+full 2 MiB backup; it was not overwritten as a source-code project.
+
+Completed Windows dataset in neighbouring polarizer repo:
+measurements/two_lcd_reference_video_restored_20261028_213348
+25 finite main bursts, 542 saved camera frames, 10,144 matched spectrum packets.
+Zero reported camera frame gaps, incomplete images, invalid reference packets
+or DAC acknowledgement failures. The final report has busy=0, fault=0, lamp
+duty=0, lamp_mv=0, LCD1=0 and LCD2=0. All illumination is off.
+
+The host writer now requests 5 full-resolution packed 12-bit frames per second
+with bounded buffering. The new full experiment completed without the previous
+writer-queue abort. This was a host-only change; no further H7 flash was required.
+The 9 V nominal transient spent 117 ms above the normal 6 V ceiling. It is not a
+steady high-voltage operating recommendation for the 6 V-rated lamp.
+
+Acquisition, reconstruction and publication scripts and complete scientific scope
+are documented in polarizer/references/two_lcd_restored_acquisition_20261028.txt.
+The raw data are local and gitignored. No new acquisition is running.
