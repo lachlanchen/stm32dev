@@ -1,0 +1,42 @@
+H7 DCP1 precision acquisition handoff - 29 October 2026
+
+No firmware source was changed and no new firmware flash was performed
+during the precision acquisition. Existing DCP1 finite-burst firmware remains.
+Preserve all previous firmware images and original sensor-head/LCD sources.
+
+Controller: STM32H743IIT6, ST-Link 00710049572D430E4E4C3054.
+Image magic 0x44435031; source:
+firmware/stm32_sensor_head_lcd/src/spice_dual_lcd_capture_main.c.
+Lamp PA2/TIM5_CH3. DAC bus PB8 SCL / PB9 SDA.
+LCD1 A/B and LCD2 C/D; independently varied bipolar differential amplitudes.
+The two physical MCP4728 boards mirror I2C address 0x60 intentionally.
+Lamp voltage labels are nominal PWM-equivalent RMS, not monitor measurements.
+
+Preserved pre-capture full-flash backup:
+backups/dual_lcd_capture_20261028_205146/h7_before_dual_lcd_capture_2MiB.bin
+SHA256 FC89C1FF3DC67E20005B76639604AB8143E99EE056F80379B6C144609B4DC758.
+
+Precision data in V-SPICE/polarizer:
+measurements/two_lcd_precision_20261028_224900.
+Main plus calibration/confirmation: 78 finite bursts, 1162 native camera
+frames, 21745 matched spectral packets, excluding the three-state pilot.
+Ordinary bursts <=4.2 s at <=6 V nominal, with >=3 s cooling.
+Brief high checks preserve firmware high-voltage time budget and longer cooling.
+No persistent illumination loop was left running.
+
+Final saved controller report:
+ready=1, busy=0, fault=0, completed=115, duty=0, lamp_mv=0,
+lcd1_mv=0, lcd2_mv=0, ack_failures=0, late_halves=0.
+All illumination OFF at completion.
+
+New host-side scripts in polarizer/scripts use spice_dual_lcd_precision_ prefix:
+acquire, reconstruct, response_model, response_lc_only_baseline, tensor,
+multiscale and publish. They reuse the existing identity-guarded PersistentSWD
+transport, finite controller profiles, PySpin acquisition and C12880 reader.
+No storage probing, event-camera firmware or C12880 firmware changes occurred.
+
+Result scope: native 2000x1500 conditional spectral image and colour-resolved
+operational response maps. These are not calibrated full Stokes/Mueller.
+Requested 10x error reduction and 5x spectral/polarization accuracy were not proven.
+Full protocol/results: polarizer/references/two_lcd_precision_20261029.txt.
+Latest publication: nature_manuscript_20261029_v8_3_precision.
