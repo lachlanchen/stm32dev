@@ -1,0 +1,17 @@
+# Import the tested board/compiler settings, without changing the old Makefile.
+include Makefile
+
+JOINT_OBJ := $(BUILD_DIR)/spice_joint_continuous_main.o
+
+.PHONY: joint-continuous
+joint-continuous: $(BUILD_DIR)/$(PROJECT).bin
+
+$(JOINT_OBJ): src/spice_joint_continuous_main.c
+	@powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path '$(BUILD_DIR)' | Out-Null"
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/$(PROJECT).elf: $(JOINT_COMMON) $(JOINT_OBJ)
+	$(CC) $(JOINT_COMMON) $(JOINT_OBJ) $(LDFLAGS) -o $@
+
+$(BUILD_DIR)/$(PROJECT).bin: $(BUILD_DIR)/$(PROJECT).elf
+	$(OBJCOPY) -O binary $< $@
